@@ -20,7 +20,7 @@ jobs:
 
   windows-msvc:
     name: Windows MSVC (Release)
-    runs-on: windows-latest
+    runs-on: windows-2022
     needs: repo-metadata
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
 
   windows-relwithdebinfo-msvc:
     name: Windows MSVC (RelWithDebInfo) + binary scan
-    runs-on: windows-latest
+    runs-on: windows-2022
     needs: repo-metadata
     steps:
       - uses: actions/checkout@v4

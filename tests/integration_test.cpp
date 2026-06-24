@@ -13,14 +13,14 @@ int main() {
     std::cout << "[+] Version: " << stealth::version() << " - PASSED\n\n";
 
     std::cout << "[*] Testing string encryption integration...\n";
-    auto encrypted_key = stealth::S("integration_test_key_123");
+    auto encrypted_key = S("integration_test_key_123");
     assert(std::strcmp(encrypted_key, "integration_test_key_123") == 0);
     std::cout << "[+] Encrypted string decryption - PASSED\n\n";
 
     std::cout << "[*] Testing API resolution integration...\n";
-    using MessageBoxW_t = int(*)(HWND, LPCWSTR, LPCWSTR, UINT);
-    auto MessageBoxW = stealth::get_function<MessageBoxW_t>("user32.dll", "MessageBoxW");
-    assert(MessageBoxW != nullptr);
+    using GetCurrentProcessId_t = DWORD(*)();
+    auto GetCurrentProcessId = stealth::get_function<GetCurrentProcessId_t>("kernel32.dll", "GetCurrentProcessId");
+    assert(GetCurrentProcessId != nullptr);
     std::cout << "[+] API resolution - PASSED\n\n";
 
     std::cout << "[*] Testing encoding integration...\n";
@@ -29,7 +29,7 @@ int main() {
     assert(!encoded.empty());
     auto decoded = stealth::encoding::base64_decode(encoded);
     assert(decoded.has_value());
-    std::string decoded_str(decoded->begin(), decoded->end());
+    std::string decoded_str(reinterpret_cast<const char*>(decoded.data), decoded.len);
     assert(decoded_str == original);
     std::cout << "[+] Base64 encode/decode - PASSED\n\n";
 
@@ -69,7 +69,8 @@ int main() {
     std::vector<uint8_t> data_vec(reinterpret_cast<uint8_t*>(xor_data), reinterpret_cast<uint8_t*>(xor_data) + xor_len);
     stealth::encoding::xor_decode(data_vec.data(), data_vec.size(), xor_key);
     stealth::encoding::xor_decode(data_vec.data(), data_vec.size(), xor_key);
-    assert(std::strcmp(reinterpret_cast<char*>(data_vec.data()), "xor_test_data") == 0);
+    assert(data_vec.size() == xor_len);
+    assert(std::memcmp(data_vec.data(), "xor_test_data", xor_len) == 0);
     std::cout << "[+] XOR encode/decode - PASSED\n\n";
 
     std::cout << "[*] Testing debug detection...\n";
@@ -94,7 +95,7 @@ int main() {
     assert(std::strcmp(rot13_dst, "Hello") == 0);
     std::cout << "[+] ROT13 - PASSED\n\n";
 
-    std::cout << "[*] Testing secure_string...\n";
+    std::cout << "[*] Testing stealth::secure_string...\n";
     stealth::secure_string<256> ss("test");
     assert(std::strcmp(ss.c_str(), "test") == 0);
     ss.clear();
@@ -106,12 +107,12 @@ int main() {
         }
     }
     assert(ss_cleared);
-    std::cout << "[+] secure_string - PASSED\n\n";
+    std::cout << "[+] stealth::secure_string - PASSED\n\n";
 
     std::cout << "========================================\n";
     std::cout << "[+] ALL INTEGRATION TESTS PASSED!\n";
     std::cout << "========================================\n";
-    std::cout << "\n[*] The library is ready for production use!\n";
+    std::cout << "\n[*] Integration coverage completed.\n";
 
     return 0;
 }

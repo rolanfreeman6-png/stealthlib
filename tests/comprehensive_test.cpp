@@ -3,7 +3,9 @@
 #include <cstring>
 #include <cwchar>
 #include <iostream>
+#include <new>
 #include <string>
+#include <type_traits>
 #include <cstdint>
 
 static int g_pass = 0;
@@ -44,7 +46,17 @@ static bool test_ss_clear() { stealth::secure_string<256> ss("sensitive_data"); 
 static bool test_ss_default() { stealth::secure_string<256> ss; return ss.length() == 0 && ss.c_str()[0] == '\0'; }
 static bool test_ss_truncate() { stealth::secure_string<8> ss("1234567890ABCDEF"); return ss.length() == 7; }
 static bool test_ss_data() { stealth::secure_string<256> ss("access"); return ss.data() != nullptr && ss.data()[0] == 'a'; }
-static bool test_ss_destructor() { char* leaked = nullptr; { stealth::secure_string<64> ss("will_be_zeroed"); leaked = ss.data(); std::memcpy(leaked, "XXXXXXXXXXXX", 13); } for (int i = 0; i < 13; ++i) if (leaked[i] != 0) return false; return true; }
+static bool test_ss_destructor() {
+    using string_t = stealth::secure_string<64>;
+    alignas(string_t) unsigned char storage[sizeof(string_t)]{};
+    auto* ss = new (storage) string_t("will_be_zeroed");
+    std::memcpy(ss->data(), "XXXXXXXXXXXX", 13);
+    ss->~string_t();
+    for (size_t i = 0; i < sizeof(storage); ++i) {
+        if (storage[i] != 0) return false;
+    }
+    return true;
+}
 
 static bool test_b64_empty() { return stealth::encoding::base64_encode("").empty(); }
 static bool test_b64_hello() { return stealth::encoding::base64_encode("Hello") == "SGVsbG8="; }

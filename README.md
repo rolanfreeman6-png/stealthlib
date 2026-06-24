@@ -1,5 +1,8 @@
 # StealthLib
 
+[![CI](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/ci.yml/badge.svg)](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Header-only C++20 utilities for Windows-focused string obfuscation, PEB-based API resolution, debugger signals, and secure memory helpers.
 
 StealthLib is designed for applications that want fewer plain-text strings and fewer static imports in release binaries. It is obfuscation and hardening, not cryptography and not a promise of complete protection against a determined reverse engineer.

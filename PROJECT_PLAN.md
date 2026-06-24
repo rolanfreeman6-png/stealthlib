@@ -38,11 +38,12 @@ Secondary headers are not part of the documented public surface until they are e
 - [x] Old secondary headers removed from the public surface.
 - [x] RelWithDebInfo binary-scan CI job added and passing locally.
 - [x] GitHub repository description updated to honest pre-release positioning.
+- [x] Public GitHub Actions matrix is green on `main`.
+- [x] CI badges added to README after the first green public run.
 
 ### Remaining before public launch
 
-- [ ] Confirm the public GitHub Actions matrix is green on `main`.
-- [ ] Add CI badges to README after the first green public run.
+- [ ] Make the release post with the honest framing: "not magic, but tested Windows hardening utilities."
 
 ## Current Competitive Angle
 

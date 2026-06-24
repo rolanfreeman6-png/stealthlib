@@ -157,7 +157,7 @@ The updated `.github/workflows/ci.yml` runs:
 | `linux-gcc` | ubuntu-latest | GCC 13 | Release | builds only portable tests |
 | `linux-clang` | ubuntu-latest | Clang | Release | builds only portable tests |
 
-The binary scan is now exercised in Release, Debug, and RelWithDebInfo on Windows.
+The binary scan is now exercised in Release, Debug, and RelWithDebInfo on Windows. The first green public run completed successfully on 2026-06-24 after pinning MSVC jobs to `windows-2022` (the `windows-latest` runner image now ships Visual Studio 2026, which does not match the `Visual Studio 17 2022` generator).
 
 ---
 
@@ -188,18 +188,21 @@ That positioning is defensible and distinct from the single-feature competitors 
 
 ### Blockers before public release
 
+All blockers are resolved:
+
 1. ~~**Update GitHub repository description.**~~ Done. The description now reads: "Header-only C++20 Windows hardening utilities: compile-time string obfuscation, PEB-based API resolution, secure memory helpers." The `repo-metadata` CI job validates it on every push.
-2. **Decide the fate of the old secondary headers.** This report recommends removal. They have already been deleted from the working tree: `stealth_strings.hpp`, `stealth_peb.hpp`, `stealth_encode.hpp`, `stealth_iat.hpp`. If they are needed later, they should be rewritten as thin wrappers over `stealth.hpp` rather than restored as-is.
-3. **Add `docs/SECURITY.md`.** Done in this pass.
-4. **Add `docs/HARDENING_REPORT.md`.** Done in this pass.
+2. ~~**Decide the fate of the old secondary headers.**~~ Done. Removed from the working tree: `stealth_strings.hpp`, `stealth_peb.hpp`, `stealth_encode.hpp`, `stealth_iat.hpp`. If needed later, they should be rewritten as thin wrappers over `stealth.hpp` rather than restored as-is.
+3. ~~**Add `docs/SECURITY.md`.**~~ Done in this pass.
+4. ~~**Add `docs/HARDENING_REPORT.md`.**~~ Done in this pass.
+5. ~~**Confirm public CI is green on `main`.**~~ Done on 2026-06-24.
+6. ~~**Add GitHub Actions badges to README.**~~ Done after the first green public run.
 
 ### Strongly recommended before wide promotion
 
-5. **Add GitHub Actions badges to README** only after the public CI is green for at least one full run on `main`.
-6. **Convert remaining tests from `assert` to a real test framework** or keep `NDEBUG` disabled in all test configurations. The current CMake setup strips `NDEBUG` from Release, RelWithDebInfo, and MinSizeRel flags, so `assert` is active. This is acceptable for a pre-release, but a dedicated test harness is cleaner long-term.
-7. **Add deterministic PE fixture tests** for malformed headers and forwarded exports without relying on system DLLs.
-8. **Write the release post** with the honest framing: "not magic, but tested Windows hardening utilities."
-9. **Install WSL2 Clang locally** if you want to pre-validate the `linux-clang` CI job before pushing. The CI job installs it automatically.
+7. **Convert remaining tests from `assert` to a real test framework** or keep `NDEBUG` disabled in all test configurations. The current CMake setup strips `NDEBUG` from Release, RelWithDebInfo, and MinSizeRel flags, so `assert` is active. This is acceptable for a pre-release, but a dedicated test harness is cleaner long-term.
+8. **Add deterministic PE fixture tests** for malformed headers and forwarded exports without relying on system DLLs.
+9. **Write the release post** with the honest framing: "not magic, but tested Windows hardening utilities."
+10. **Install WSL2 Clang locally** if you want to pre-validate the `linux-clang` CI job before pushing. The CI job installs it automatically.
 
 ### Nice-to-have
 

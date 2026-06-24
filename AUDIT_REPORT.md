@@ -9,16 +9,14 @@
 | Path | Description |
 |---|---|
 | `stealthlib/stealth.hpp` | Main header — all features, fully tested (FIXED) |
-| `stealthlib/stealth_strings.hpp` | Extended string encryption (secondary, unchanged) |
-| `stealthlib/stealth_peb.hpp` | Extended PEB walking (secondary, unchanged) |
-| `stealthlib/stealth_encode.hpp` | Extended encoding (secondary, unchanged) |
-| `stealthlib/stealth_iat.hpp` | IAT manipulation (secondary, unchanged) |
 | `src/stealth.hpp` | Standalone copy for quick compilation |
 | `src/compile.bat` | One-click build script for MSVC |
 | `tests/comprehensive_test.cpp` | 95-test suite covering all features |
 | `tests/string_test.cpp` | 10 string-specific tests (fixed warnings) |
 | `tests/peb_test.cpp` | PEB walking tests (fixed warnings) |
 | `tests/integration_test.cpp` | Integration tests |
+
+> **Note:** The old secondary headers (`stealth_strings.hpp`, `stealth_peb.hpp`, `stealth_encode.hpp`, `stealth_iat.hpp`) were removed from the public surface during the 1.0.0 hardening pass. Only `stealthlib/stealth.hpp` is the supported public header. See `docs/HARDENING_REPORT.md` and `docs/SECURITY.md` for details.
 
 ---
 

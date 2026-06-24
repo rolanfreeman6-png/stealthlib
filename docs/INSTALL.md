@@ -4,7 +4,7 @@
 
 - C++20 compiler
 - Windows 10/11 x64 (primary target)
-- Linux x64 (secondary)
+- Linux x64 for portable string/encoding/memory tests only
 
 ### Supported Compilers
 
@@ -34,7 +34,7 @@ cp -r stealthlib/ your_project/include/
 include(FetchContent)
 FetchContent_Declare(
     stealthlib
-    GIT_REPOSITORY https://github.com/rolanfreeman6/stealthlib.git
+    GIT_REPOSITORY https://github.com/rolanfreeman6-png/stealthlib.git
     GIT_TAG main
 )
 FetchContent_MakeAvailable(stealthlib)
@@ -47,7 +47,7 @@ target_link_libraries(your_target PRIVATE stealthlib)
 ```cmake
 include(ExternalProject)
 ExternalProject_Add(stealthlib
-    GIT_REPOSITORY https://github.com/rolanfreeman6/stealthlib.git
+    GIT_REPOSITORY https://github.com/rolanfreeman6-png/stealthlib.git
     GIT_TAG main
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/thirdparty/stealthlib
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_SOURCE_DIR}/thirdparty/stealthlib_install
@@ -59,7 +59,7 @@ ExternalProject_Add(stealthlib
 ## Building Examples
 
 ```bash
-git clone https://github.com/rolanfreeman6/stealthlib.git
+git clone https://github.com/rolanfreeman6-png/stealthlib.git
 cd stealthlib
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
@@ -70,8 +70,9 @@ cmake --build .
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `STEALTH_BUILD_EXAMPLES` | ON | Build example programs |
+| `STEALTH_BUILD_EXAMPLES` | ON | Build Windows example programs |
 | `STEALTH_BUILD_TESTS` | ON | Build test suite |
+| `STEALTH_BUILD_BENCHMARK` | ON | Build Windows benchmark |
 
 ## Platform-Specific Notes
 
@@ -85,5 +86,4 @@ Works out of the box with GCC 10+.
 
 ### Linux
 
-Limited functionality - PEB walking not available.
-String encryption and encoding still work.
+Linux builds cover portable string obfuscation, encoding, and memory helpers. PEB walking and dynamic API resolution are Windows-only.

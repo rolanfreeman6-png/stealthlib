@@ -1,159 +1,93 @@
 # StealthLib
 
-**Zero strings. Zero imports. Complete binary protection.**
+Header-only C++20 utilities for Windows-focused string obfuscation, PEB-based API resolution, debugger signals, and secure memory helpers.
 
-A header-only C++20 library for compile-time string encryption and dynamic API resolution.
+StealthLib is designed for applications that want fewer plain-text strings and fewer static imports in release binaries. It is obfuscation and hardening, not cryptography and not a promise of complete protection against a determined reverse engineer.
 
----
+## Why This Project Exists
 
-## Features
+Most small C++ obfuscation headers focus only on string literals. StealthLib aims to combine the common hardening pieces a Windows application usually needs:
 
-- **Compile-time string encryption** — Strings encrypted at compile-time, decrypted only at runtime
-- **PEB walking** — Resolve API functions dynamically without IAT entries
-- **Encoding utilities** — Base64, Hex, XOR, ROT13
-- **Debugger detection** — Detect local and remote debuggers
-- **Secure memory** — Secure zero, constant-time comparison
-- **Header-only** — Copy-paste integration, no dependencies
-- **MSVC compatible** — Works with Visual Studio 2019/2022
+- compile-time `S()` / `SW()` string obfuscation
+- PEB module walking and export resolution
+- forwarded export handling
+- debugger detection signals
+- secure zeroing and constant-time byte comparison
+- focused regression tests for multi-translation-unit string bugs and PE resolver edge cases
 
----
+## Current Status
+
+This repository is being prepared for a public release. The core header is usable, but the project should not be advertised as "complete binary protection".
+
+Before publishing widely, keep CI green and make the binary-scan tests part of release validation.
 
 ## Quick Start
 
 ```cpp
 #include "stealthlib/stealth.hpp"
+#include <windows.h>
 
 int main() {
-    // Encrypted at compile-time
-    auto api_key = stealth::S("sk-12345abcde");
-    
-    // Resolved dynamically, no IAT entry
+    auto api_key = S("sk-12345abcde");
+    (void)api_key;
+
     using MessageBoxW_t = int(HWND, LPCWSTR, LPCWSTR, UINT);
-    auto msg = stealth::get_function<MessageBoxW_t*>("user32.dll", "MessageBoxW");
-    
-    if (msg) {
-        msg(nullptr, L"Protected!", L"StealthLib", MB_OK);
+    auto MessageBoxW = stealth::get_function<MessageBoxW_t*>("user32.dll", "MessageBoxW");
+
+    if (MessageBoxW) {
+        MessageBoxW(nullptr, L"Protected", L"StealthLib", MB_OK);
     }
-    
-    // Check for debugger
+
     if (stealth::detection::is_debugger_present()) {
-        // Handle debugger detected
+        // Treat this as a signal, not proof.
     }
-    
-    return 0;
 }
 ```
 
----
-
-## String Encryption
-
-Encrypt sensitive strings at compile-time:
+## String Obfuscation
 
 ```cpp
-// Char strings
-auto db_password = stealth::S("P@ssw0rd!123");
-auto api_key = stealth::S("sk-live-abc123def456");
+auto password = S("P@ssw0rd!123");
+auto title = SW(L"Protected Application");
 
-// Wide strings
-auto title = stealth::SW(L"Protected Application");
-auto msg = stealth::SW(L"Sensitive data here");
-
-// Access decrypted string
-std::cout << db_password.c_str() << "\n";
-std::cout << db_password.size() << "\n"; // length
+std::cout << password << "\n";
+std::wcout << title << L"\n";
 ```
 
----
+The string macros are intentionally global preprocessor macros, not `stealth::S()` functions.
 
 ## Dynamic API Resolution
 
-Resolve Windows APIs without IAT entries:
-
 ```cpp
-// Function pointer type
-using MessageBoxW_t = int(HWND, LPCWSTR, LPCWSTR, UINT);
+using GetTickCount_t = DWORD();
 
-// Get function pointer
-auto MessageBoxW = stealth::get_function<MessageBoxW_t*>("user32.dll", "MessageBoxW");
-
-// Call it
-if (MessageBoxW) {
-    MessageBoxW(nullptr, L"Hello", L"Title", MB_OK);
+stealth::stealth_api<GetTickCount_t> tick("kernel32.dll", "GetTickCount");
+if (tick) {
+    DWORD value = tick.get()();
 }
 
-// With stealth_api template
-auto msg = stealth::stealth_api<int(HWND, LPCWSTR, LPCWSTR, UINT)>("user32.dll", "MessageBoxW");
-if (msg) {
-    msg->operator()(nullptr, L"Hello", L"Title", MB_OK);
-}
-```
-
-### Module Loader
-
-```cpp
 stealth::module_loader kernel32("kernel32.dll");
 if (kernel32) {
-    auto GetTickCount = kernel32.get_function<DWORD(*)()>("GetTickCount");
-    auto VirtualAlloc = kernel32.get_function<LPVOID(HMODULE, SIZE_T, DWORD, DWORD)>("VirtualAlloc");
+    auto VirtualAlloc = kernel32.get_function<LPVOID(*)(LPVOID, SIZE_T, DWORD, DWORD)>("VirtualAlloc");
 }
 ```
 
----
+The resolver supports forwarded exports and uses bounded PE structure checks where practical. PEB walking still depends on Windows internal process structures and should be treated as best-effort hardening.
 
-## Encoding
-
-### Base64
+## Encoding Helpers
 
 ```cpp
 auto encoded = stealth::encoding::base64_encode("sensitive_data");
-auto decoded = stealth::encoding::base64_decode(encoded);
+auto decoded = stealth::encoding::base64_decode<256>(encoded);
 if (decoded) {
-    std::cout << *decoded << "\n";
+    std::cout.write(reinterpret_cast<const char*>(decoded.data), decoded.len);
 }
-```
 
-### Hex
-
-```cpp
 auto hex = stealth::encoding::hex_encode("data", 4);
-auto raw = stealth::encoding::hex_decode(hex);
+auto raw = stealth::encoding::hex_decode<16>(hex);
 ```
 
-### XOR
-
-```cpp
-stealth::encoding::xor_key<16> key{"MySecretKey123456"};
-std::vector<uint8_t> data = /* your data */;
-
-stealth::encoding::xor_encode(data.data(), data.size(), key);
-stealth::encoding::xor_decode(data.data(), data.size(), key); // same operation
-```
-
-### ROT13
-
-```cpp
-stealth::encoding::rot13_encode(dst, src, len);
-stealth::encoding::rot13_decode(dst, src, len); // same as encode
-```
-
----
-
-## Debugger Detection
-
-```cpp
-// PEB BeingDebugged check
-if (stealth::detection::is_debugger_present()) {
-    std::cout << "Debugger detected!\n";
-}
-
-// Remote debugger (NtQueryInformationProcess)
-if (stealth::detection::check_remote_debugger()) {
-    std::cout << "Remote debugger detected!\n";
-}
-```
-
----
+Base64, Hex, XOR, and ROT13 are encoding/obfuscation utilities. They are not encryption.
 
 ## Secure Memory
 
@@ -161,97 +95,46 @@ if (stealth::detection::check_remote_debugger()) {
 char sensitive[] = "secret_data";
 stealth::memory::secure_zero(sensitive, sizeof(sensitive));
 
-// Constant-time comparison (prevents timing attacks)
 if (stealth::memory::compare_constant_time(a, b, len)) {
-    // Arrays are equal
+    // Equal
 }
 ```
 
----
+On Windows, `secure_zero` uses `SecureZeroMemory`.
 
-## Project Structure
-
-```
-stealthlib/
-├── stealthlib/            # ← Library headers (add to include path)
-│   ├── stealth.hpp        #    Main header
-│   ├── stealth_strings.hpp
-│   ├── stealth_peb.hpp
-│   ├── stealth_iat.hpp
-│   └── stealth_encode.hpp
-├── examples/              # ← Example programs
-│   ├── minimal_test.cpp   #    Basic functionality test
-│   ├── full_demo.cpp      #    Complete feature demo
-│   ├── game_protection.cpp
-│   └── server_protection.cpp
-├── tests/                 # ← Unit tests
-│   ├── string_test.cpp
-│   ├── peb_test.cpp
-│   └── integration_test.cpp
-├── benchmark/             # ← Performance benchmarks
-│   └── benchmark.cpp
-├── docs/                  # ← Documentation
-│   ├── INSTALL.md
-│   └── EXAMPLES.md
-├── CMakeLists.txt         # ← Build system
-└── LICENSE
-```
-
-## Build
-
-### CMake (Recommended)
+## Build And Test
 
 ```bash
-git clone https://github.com/rolanfreeman6-png/stealthlib.git
-cd stealthlib
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_EXAMPLES=ON
-cmake --build .
+cmake -S . -B build -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_BENCHMARK=ON
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-Run examples:
-```bash
-./examples/minimal_test.exe
-./examples/full_demo.exe
-```
+Linux builds are limited to the portable header/encoding/memory smoke tests. Windows is the primary target for PEB walking, API resolution, examples, and benchmarks.
 
-### Visual Studio
+## Release Checklist
 
-Open in Visual Studio or use:
-```bash
-.\compile.bat
-```
+- Windows MSVC Release build passes.
+- Windows clang/Ninja Release build passes.
+- CTest passes on Windows and Linux smoke jobs.
+- Multi-translation-unit string regression passes.
+- Forwarded export regression passes.
+- Debug and Release binaries are scanned for sentinel string literals.
+- README claims match what CI actually verifies.
 
-### As a Header-Only Library
+## Security and Hardening Notes
 
-Copy `stealthlib/` folder to your project and:
-```cpp
-#include "stealthlib/stealth.hpp"
-```
+StealthLib is obfuscation and hardening, not cryptography or a promise of complete protection. See the full details in:
 
----
-
-## Before vs After
-
-| Analysis | Without StealthLib | With StealthLib |
-|----------|-------------------|-----------------|
-| `strings.exe` | 47 sensitive strings | 0 visible |
-| IAT entries | 12 imports | 0 |
-| Dependencies | user32.dll, kernel32.dll | (empty or minimal) |
-
----
+- [`docs/SECURITY.md`](docs/SECURITY.md) — threat model, supported public surface, and responsible disclosure.
+- [`docs/HARDENING_REPORT.md`](docs/HARDENING_REPORT.md) — what was fixed, how it was verified, competitive assessment, and remaining tasks.
 
 ## Requirements
 
-- C++20 compiler (MSVC 19.29+, GCC 10+, Clang 10+)
-- Windows x64/x86 (primary target)
-
----
+- C++20 compiler
+- Windows x64/x86 for PEB walking and dynamic API resolution
+- MSVC 19.29+, recent clang-cl/Clang, or recent GCC for portable tests
 
 ## License
 
 MIT License
-
----
-
-*Made with stealth by [rolanfreeman6-png](https://github.com/rolanfreeman6)*

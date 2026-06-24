@@ -1,6 +1,6 @@
 # Examples
 
-This directory contains example programs demonstrating StealthLib features.
+This directory contains Windows example programs demonstrating StealthLib features.
 
 ## minimal_test.cpp
 
@@ -48,11 +48,11 @@ cmake .. -DSTEALTH_BUILD_EXAMPLES=ON
 cmake --build .
 ```
 
-## Running
+## Running On Windows
 
 ```bash
-./minimal_test
-./full_demo
-./game_protection
-./server_protection
+./examples/Release/minimal_test.exe
+./examples/Release/full_demo.exe
+./examples/Release/game_protection.exe
+./examples/Release/server_protection.exe
 ```

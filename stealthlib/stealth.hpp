@@ -4,16 +4,22 @@
 
 #define STEALTH_VERSION_STRING "1.0.0"
 
+#include <type_traits>
+#include <cmath>
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
 #include <string>
 #include <string_view>
 #include <array>
-#include <optional>
-#include <vector>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 
@@ -70,7 +76,7 @@ namespace detail {
         constexpr encrypted_wstring_impl(const wchar_t* src) noexcept {
             for (size_t i = 0; i < N; ++i) {
                 uint32_t ch = static_cast<uint32_t>(src[i]);
-                ch ^= derive_byte(Idx, i % 4);
+                ch ^= static_cast<uint32_t>(derive_byte(Idx, i % 8)) | (static_cast<uint32_t>(derive_byte(Idx, (i % 8 + 1) % 8)) << 8);
                 encrypted[i] = static_cast<wchar_t>(ch);
             }
         }
@@ -79,7 +85,7 @@ namespace detail {
             if (!decrypted) {
                 for (size_t i = 0; i < N; ++i) {
                     uint32_t ch = static_cast<uint32_t>(encrypted[i]);
-                    ch ^= derive_byte(Idx, i % 4);
+                    ch ^= static_cast<uint32_t>(derive_byte(Idx, i % 8)) | (static_cast<uint32_t>(derive_byte(Idx, (i % 8 + 1) % 8)) << 8);
                     buffer[i] = static_cast<wchar_t>(ch);
                 }
                 buffer[N] = L'\0';
@@ -90,34 +96,33 @@ namespace detail {
     };
     
     template<size_t N, size_t Idx>
-struct stealth_encrypted_char {
-    char buffer[N + 1];
-    
-    constexpr stealth_encrypted_char(const char* src) noexcept {
-        for (size_t i = 0; i < N; ++i) {
-            buffer[i] = static_cast<char>(static_cast<uint8_t>(src[i]) ^ detail::derive_byte(Idx, i % 8));
-        }
-        buffer[N] = '\0';
+    inline const char* encrypt_string(const char* src) noexcept {
+        static encrypted_string_impl<N, Idx> holder(src);
+        return holder.decrypt();
     }
     
-    constexpr operator const char*() const noexcept { return buffer; }
-};
+    template<size_t N, size_t Idx>
+    inline const wchar_t* encrypt_wstring(const wchar_t* src) noexcept {
+        static encrypted_wstring_impl<N, Idx> holder(src);
+        return holder.decrypt();
+    }
+}
 
-template<size_t N, size_t Idx>
-struct stealth_encrypted_wchar {
-    wchar_t buffer[N + 1];
-    
-    constexpr stealth_encrypted_wchar(const wchar_t* src) noexcept {
-        for (size_t i = 0; i < N; ++i) {
-            uint32_t ch = static_cast<uint32_t>(src[i]);
-            ch ^= detail::derive_byte(Idx, i % 4);
-            buffer[i] = static_cast<wchar_t>(ch);
-        }
-        buffer[N] = L'\0';
-    }
-    
-    constexpr operator const wchar_t*() const noexcept { return buffer; }
-};
+namespace memory {
+
+inline void secure_zero(void* ptr, size_t len) noexcept {
+    volatile uint8_t* p = static_cast<volatile uint8_t*>(ptr);
+    while (len--) *p++ = 0;
+}
+
+inline bool compare_constant_time(const void* a, const void* b, size_t len) noexcept {
+    const uint8_t* A = static_cast<const uint8_t*>(a);
+    const uint8_t* B = static_cast<const uint8_t*>(b);
+    uint8_t diff = 0;
+    for (size_t i = 0; i < len; ++i) diff |= A[i] ^ B[i];
+    return diff == 0;
+}
+
 }
 
 template<size_t MaxSize = 256>
@@ -142,7 +147,7 @@ public:
     secure_string& operator=(const secure_string&) = delete;
     
     ~secure_string() noexcept {
-        std::memset(data_, 0, MaxSize);
+        memory::secure_zero(data_, MaxSize);
         length_ = 0;
     }
     
@@ -153,7 +158,7 @@ public:
     [[nodiscard]] size_t size() const noexcept { return length_; }
     
     void clear() noexcept {
-        std::memset(data_, 0, MaxSize);
+        memory::secure_zero(data_, MaxSize);
         length_ = 0;
     }
     
@@ -164,16 +169,34 @@ private:
 
 namespace encoding {
 
+template<size_t MaxBytes = 4096>
+class decode_result {
+public:
+    uint8_t data[MaxBytes];
+    size_t len = 0;
+    bool valid = false;
+    
+    decode_result() noexcept { std::memset(data, 0, MaxBytes); }
+    
+    [[nodiscard]] const uint8_t* begin() const noexcept { return data; }
+    [[nodiscard]] const uint8_t* end() const noexcept { return data + len; }
+    [[nodiscard]] size_t size() const noexcept { return len; }
+    [[nodiscard]] bool has_value() const noexcept { return valid; }
+    explicit operator bool() const noexcept { return valid; }
+};
+
 inline std::string base64_encode(const void* data, size_t len) noexcept;
 inline std::string base64_encode(const std::string_view& str) noexcept {
     return base64_encode(str.data(), str.size());
 }
-inline std::optional<std::string> base64_decode(const std::string_view& str) noexcept;
+template<size_t MaxBytes = 4096>
+decode_result<MaxBytes> base64_decode(const std::string_view& str) noexcept;
 inline std::string hex_encode(const void* data, size_t len) noexcept;
 inline std::string hex_encode(const std::string_view& str) noexcept {
     return hex_encode(str.data(), str.size());
 }
-inline std::optional<std::vector<uint8_t>> hex_decode(const std::string_view& str) noexcept;
+template<size_t MaxBytes = 4096>
+decode_result<MaxBytes> hex_decode(const std::string_view& str) noexcept;
 
 inline void rot13_encode(void* dst, const void* src, size_t len) noexcept {
     const uint8_t* s = static_cast<const uint8_t*>(src);
@@ -210,7 +233,10 @@ struct xor_key {
         }
     }
     
-    [[nodiscard]] uint8_t operator[](size_t idx) const noexcept { return data[idx % length]; }
+    [[nodiscard]] uint8_t operator[](size_t idx) const noexcept {
+        if (length == 0) return 0;
+        return data[idx % length];
+    }
 };
 
 template<size_t KeySize>
@@ -229,7 +255,7 @@ inline void xor_decode(void* data, size_t len, const xor_key<KeySize>& key) noex
     xor_crypt(data, len, key);
 }
 
-namespace detail_base64 {
+namespace detail {
 static const char b64_alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 inline char encode_b64_byte(unsigned char v) noexcept { return b64_alphabet[v & 0x3F]; }
 }
@@ -243,30 +269,32 @@ inline std::string base64_encode(const void* data, size_t len) noexcept {
         unsigned int v = (static_cast<unsigned int>(src[i]) << 16) | 
                         (static_cast<unsigned int>(src[i + 1]) << 8) | 
                         static_cast<unsigned int>(src[i + 2]);
-        result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 18));
-        result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 12));
-        result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 6));
-        result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v));
+        result += detail::encode_b64_byte(static_cast<unsigned char>(v >> 18));
+        result += detail::encode_b64_byte(static_cast<unsigned char>(v >> 12));
+        result += detail::encode_b64_byte(static_cast<unsigned char>(v >> 6));
+        result += detail::encode_b64_byte(static_cast<unsigned char>(v));
         i += 3;
     }
     if (i + 1 < len) {
         unsigned int v = (static_cast<unsigned int>(src[i]) << 16) | 
                         (static_cast<unsigned int>(src[i + 1]) << 8);
-        result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 18));
-        result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 12));
-        result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 6));
+        result += detail::encode_b64_byte(static_cast<unsigned char>(v >> 18));
+        result += detail::encode_b64_byte(static_cast<unsigned char>(v >> 12));
+        result += detail::encode_b64_byte(static_cast<unsigned char>(v >> 6));
         result += '=';
     } else if (i < len) {
         unsigned int v = static_cast<unsigned int>(src[i]) << 16;
-        result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 18));
-        result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 12));
+        result += detail::encode_b64_byte(static_cast<unsigned char>(v >> 18));
+        result += detail::encode_b64_byte(static_cast<unsigned char>(v >> 12));
         result += "==";
     }
     return result;
 }
 
-inline std::optional<std::string> base64_decode(const std::string_view& str) noexcept {
-    if (str.size() % 4 != 0) return std::nullopt;
+template<size_t MaxBytes>
+decode_result<MaxBytes> base64_decode(const std::string_view& str) noexcept {
+    decode_result<MaxBytes> result;
+    if (str.size() % 4 != 0) return result;
     static const int8_t b64_decode[256] = {
         -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
         -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
@@ -285,8 +313,7 @@ inline std::optional<std::string> base64_decode(const std::string_view& str) noe
         -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
         -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
     };
-    std::string result;
-    result.reserve(str.size() * 3 / 4);
+    size_t out = 0;
     const char* s = str.data();
     size_t len_str = str.size();
     for (size_t i = 0; i < len_str; i += 4) {
@@ -295,14 +322,16 @@ inline std::optional<std::string> base64_decode(const std::string_view& str) noe
             if (s[i + j] != '=') {
                 unsigned char c = static_cast<unsigned char>(s[i + j]);
                 vals[j] = b64_decode[c];
-                if (vals[j] < 0) return std::nullopt;
+                if (vals[j] < 0) return result;
             }
         }
-        if (vals[0] < 0 || vals[1] < 0) return std::nullopt;
-        result += static_cast<char>((vals[0] << 2) | (vals[1] >> 4));
-        if (vals[2] >= 0 && s[i + 2] != '=') result += static_cast<char>((vals[1] << 4) | (vals[2] >> 2));
-        if (vals[3] >= 0 && s[i + 3] != '=') result += static_cast<char>((vals[2] << 6) | vals[3]);
+        if (vals[0] < 0 || vals[1] < 0) return result;
+        if (out < MaxBytes) result.data[out++] = static_cast<uint8_t>((vals[0] << 2) | (vals[1] >> 4));
+        if (vals[2] >= 0 && s[i + 2] != '=' && out < MaxBytes) result.data[out++] = static_cast<uint8_t>((vals[1] << 4) | (vals[2] >> 2));
+        if (vals[3] >= 0 && s[i + 3] != '=' && out < MaxBytes) result.data[out++] = static_cast<uint8_t>((vals[2] << 6) | vals[3]);
     }
+    result.len = out;
+    result.valid = true;
     return result;
 }
 
@@ -317,41 +346,28 @@ inline std::string hex_encode(const void* data, size_t len) noexcept {
     return result;
 }
 
-inline std::optional<std::vector<uint8_t>> hex_decode(const std::string_view& str) noexcept {
-    if (str.size() % 2 != 0) return std::nullopt;
-    std::vector<uint8_t> result(str.size() / 2);
+template<size_t MaxBytes>
+decode_result<MaxBytes> hex_decode(const std::string_view& str) noexcept {
+    decode_result<MaxBytes> result;
+    if (str.size() % 2 != 0) return result;
+    size_t out = 0;
     const char* s = str.data();
-    for (size_t i = 0; i < str.size() / 2; ++i) {
+    for (size_t i = 0; i < str.size() / 2 && out < MaxBytes; ++i) {
         char h = s[i * 2], l = s[i * 2 + 1];
         int hi = 0, lo = 0;
         if (h >= '0' && h <= '9') hi = h - '0';
         else if (h >= 'A' && h <= 'F') hi = h - 'A' + 10;
         else if (h >= 'a' && h <= 'f') hi = h - 'a' + 10;
-        else return std::nullopt;
+        else return result;
         if (l >= '0' && l <= '9') lo = l - '0';
         else if (l >= 'A' && l <= 'F') lo = l - 'A' + 10;
         else if (l >= 'a' && l <= 'f') lo = l - 'a' + 10;
-        else return std::nullopt;
-        result[i] = static_cast<uint8_t>((hi << 4) | lo);
+        else return result;
+        result.data[out++] = static_cast<uint8_t>((hi << 4) | lo);
     }
+    result.len = out;
+    result.valid = true;
     return result;
-}
-
-}
-
-namespace memory {
-
-inline void secure_zero(void* ptr, size_t len) noexcept {
-    volatile uint8_t* p = static_cast<volatile uint8_t*>(ptr);
-    while (len--) *p++ = 0;
-}
-
-inline bool compare_constant_time(const void* a, const void* b, size_t len) noexcept {
-    const uint8_t* A = static_cast<const uint8_t*>(a);
-    const uint8_t* B = static_cast<const uint8_t*>(b);
-    uint8_t diff = 0;
-    for (size_t i = 0; i < len; ++i) diff |= A[i] ^ B[i];
-    return diff == 0;
 }
 
 }
@@ -359,17 +375,84 @@ inline bool compare_constant_time(const void* a, const void* b, size_t len) noex
 namespace detection {
 
 inline bool is_debugger_present() noexcept {
-#if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))
+#ifdef _WIN32
+    #if defined(_M_X64) || defined(__x86_64__)
     auto peb = reinterpret_cast<void*>(__readgsqword(0x60));
-    if (!peb) return false;
-    return *static_cast<uint8_t*>(static_cast<void*>(static_cast<char*>(peb) + 2)) != 0;
-#elif defined(_WIN32) && defined(_M_IX86)
+    #elif defined(_M_IX86)
     auto peb = reinterpret_cast<void*>(__readfsdword(0x30));
+    #else
+    return false;
+    #endif
     if (!peb) return false;
     return *static_cast<uint8_t*>(static_cast<void*>(static_cast<char*>(peb) + 2)) != 0;
 #else
     return false;
 #endif
+}
+
+inline bool check_remote_debugger() noexcept {
+#ifdef _WIN32
+    using NtQueryInformationProcess_t = int(void*, int, void*, uint32_t, uint32_t*);
+    void* ntdll = nullptr;
+    #if defined(_M_X64) || defined(__x86_64__)
+    auto peb = reinterpret_cast<void*>(__readgsqword(0x60));
+    #elif defined(_M_IX86)
+    auto peb = reinterpret_cast<void*>(__readfsdword(0x30));
+    #else
+    return false;
+    #endif
+    if (!peb) return false;
+    struct UNICODE_STRING { uint16_t Length; uint16_t MaximumLength; wchar_t* Buffer; };
+    struct LIST_ENTRY_TEMP { void* Flink; void* Blink; };
+    struct LDR_ENTRY_TEMP { LIST_ENTRY_TEMP InLoadOrderLinks; LIST_ENTRY_TEMP InMemoryOrderLinks; LIST_ENTRY_TEMP InInitializationOrderLinks; void* DllBase; void* EntryPoint; uint32_t SizeOfImage; UNICODE_STRING FullDllName; UNICODE_STRING BaseDllName; };
+    struct PEB_LDR_TEMP { uint32_t Length; uint8_t Initialized; void* SsHandle; LIST_ENTRY_TEMP InLoadOrderModuleList; };
+    struct PEB_STRUCT_TEMP { uint8_t InheritedAddressSpace; uint8_t ReadImageFileExecOptions; uint8_t BeingDebugged; uint8_t BitField; void* Mutant; void* ImageBaseAddress; PEB_LDR_TEMP* Ldr; };
+    auto pPEB = reinterpret_cast<PEB_STRUCT_TEMP*>(peb);
+    if (!pPEB->Ldr) return false;
+    auto entry = reinterpret_cast<LDR_ENTRY_TEMP*>(pPEB->Ldr->InLoadOrderModuleList.Flink);
+    while (entry && entry->BaseDllName.Buffer) {
+        if (entry->DllBase) {
+            wchar_t ntdll_name[] = L"ntdll.dll";
+            bool match = entry->BaseDllName.Length == 16;
+            if (match) {
+                for (int i = 0; i < 8 && match; ++i) {
+                    wchar_t a = ntdll_name[i], b = entry->BaseDllName.Buffer[i];
+                    if (a >= L'A' && a <= L'Z') a += 32;
+                    if (b >= L'A' && b <= L'Z') b += 32;
+                    if (a != b) match = false;
+                }
+            }
+            if (match) { ntdll = entry->DllBase; break; }
+        }
+        entry = reinterpret_cast<LDR_ENTRY_TEMP*>(entry->InLoadOrderLinks.Flink);
+    }
+    if (!ntdll) return false;
+    auto dos = static_cast<uint16_t*>(ntdll);
+    if (dos[0] != 0x5A4D) return false;
+    auto nt = reinterpret_cast<uint32_t*>(static_cast<char*>(ntdll) + reinterpret_cast<int32_t*>(ntdll)[1]);
+    if (nt[0] != 0x4550) return false;
+    auto& dir = reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(&nt[1]) + 96)[0];
+    if (!dir) return false;
+    auto exp = reinterpret_cast<uint32_t*>(static_cast<char*>(ntdll) + dir);
+    if (exp[1] == 0 || exp[3] == 0) return false;
+    auto names = reinterpret_cast<uint32_t*>(static_cast<char*>(ntdll) + exp[5]);
+    for (uint32_t i = 0; i < exp[3]; ++i) {
+        const char* name = reinterpret_cast<const char*>(ntdll) + names[i];
+        if (name && std::strcmp(name, "NtQueryInformationProcess") == 0) {
+            auto funcs = reinterpret_cast<uint32_t*>(static_cast<char*>(ntdll) + exp[4]);
+            auto ordinals = reinterpret_cast<uint16_t*>(static_cast<char*>(ntdll) + exp[6]);
+            auto proc = reinterpret_cast<NtQueryInformationProcess_t*>(static_cast<char*>(ntdll) + funcs[ordinals[i]]);
+            if (proc) {
+                int debug_port = 0;
+                uint32_t return_len = 0;
+                int result = proc(reinterpret_cast<void*>(-1), 30, &debug_port, sizeof(debug_port), &return_len);
+                return result == 0 && debug_port != 0;
+            }
+            break;
+        }
+    }
+#endif
+    return false;
 }
 
 }
@@ -384,18 +467,18 @@ inline void* get_peb_ptr() noexcept { return reinterpret_cast<void*>(__readfsdwo
 inline void* get_peb_ptr() noexcept { return nullptr; }
 #endif
 
-struct UNICODE_STRING_NT { uint16_t Length; uint16_t MaximumLength; wchar_t* Buffer; };
-struct LIST_ENTRY_NT { void* Flink; void* Blink; };
-struct LDR_ENTRY_NT { LIST_ENTRY_NT InLoadOrderLinks; void* DllBase; uint32_t SizeOfImage; UNICODE_STRING_NT BaseDllName; };
-struct PEB_LDR_NT { uint32_t Length; uint8_t Initialized; void* SsHandle; LIST_ENTRY_NT InLoadOrderModuleList; };
-struct PEB_STRUCT_NT { uint8_t InheritedAddressSpace; uint8_t ReadImageFileExecOptions; uint8_t BeingDebugged; uint8_t BitField; void* Mutant; void* ImageBaseAddress; PEB_LDR_NT* Ldr; };
+struct UNICODE_STRING_TEMP { uint16_t Length; uint16_t MaximumLength; wchar_t* Buffer; };
+struct LIST_ENTRY_TEMP2 { void* Flink; void* Blink; };
+struct LDR_ENTRY_TEMP2 { LIST_ENTRY_TEMP2 InLoadOrderLinks; LIST_ENTRY_TEMP2 InMemoryOrderLinks; LIST_ENTRY_TEMP2 InInitializationOrderLinks; void* DllBase; void* EntryPoint; uint32_t SizeOfImage; UNICODE_STRING_TEMP FullDllName; UNICODE_STRING_TEMP BaseDllName; };
+struct PEB_LDR_TEMP2 { uint32_t Length; uint8_t Initialized; void* SsHandle; LIST_ENTRY_TEMP2 InLoadOrderModuleList; };
+struct PEB_STRUCT_TEMP2 { uint8_t InheritedAddressSpace; uint8_t ReadImageFileExecOptions; uint8_t BeingDebugged; uint8_t BitField; void* Mutant; void* ImageBaseAddress; PEB_LDR_TEMP2* Ldr; };
 
 inline bool get_module_base(const wchar_t* name, void** out) noexcept {
-    auto peb = reinterpret_cast<PEB_STRUCT_NT*>(get_peb_ptr());
+    auto peb = reinterpret_cast<PEB_STRUCT_TEMP2*>(get_peb_ptr());
     if (!peb || !peb->Ldr) return false;
     size_t len = 0;
     while (name[len]) ++len;
-    auto entry = reinterpret_cast<LDR_ENTRY_NT*>(peb->Ldr->InLoadOrderModuleList.Flink);
+    auto entry = reinterpret_cast<LDR_ENTRY_TEMP2*>(peb->Ldr->InLoadOrderModuleList.Flink);
     while (entry && entry->BaseDllName.Buffer) {
         if (entry->BaseDllName.Length == static_cast<uint16_t>(len * 2)) {
             bool match = true;
@@ -407,7 +490,7 @@ inline bool get_module_base(const wchar_t* name, void** out) noexcept {
             }
             if (match) { *out = entry->DllBase; return true; }
         }
-        entry = reinterpret_cast<LDR_ENTRY_NT*>(entry->InLoadOrderLinks.Flink);
+        entry = reinterpret_cast<LDR_ENTRY_TEMP2*>(entry->InLoadOrderLinks.Flink);
     }
     return false;
 }
@@ -422,22 +505,22 @@ inline bool get_module_base_ansi(const char* name, void** out) noexcept {
     return get_module_base(wide, out);
 }
 
-struct DOS_HEADER_NT { uint16_t e_magic; int32_t e_lfanew; };
-struct NT_HEADERS_NT { uint32_t Signature; uint8_t Padding[4]; uint16_t Machine; uint16_t NumberOfSections; uint32_t TimeDateStamp; uint32_t PointerToSymbolTable; uint32_t NumberOfSymbols; uint16_t SizeOfOptionalHeader; uint16_t Characteristics; uint16_t Magic; uint8_t MajorLinkerVersion; uint8_t MinorLinkerVersion; uint32_t SizeOfCode; uint32_t SizeOfInitializedData; uint32_t SizeOfUninitializedData; uint32_t AddressOfEntryPoint; uint32_t BaseOfCode; uint64_t ImageBase; uint32_t SectionAlignment; uint32_t FileAlignment; uint16_t MajorOperatingSystemVersion; uint16_t MinorOperatingSystemVersion; uint16_t MajorImageVersion; uint16_t MinorImageVersion; uint16_t MajorSubsystemVersion; uint16_t MinorSubsystemVersion; uint32_t Win32VersionValue; uint32_t SizeOfImage; uint32_t SizeOfHeaders; uint32_t CheckSum; uint16_t Subsystem; uint16_t DllCharacteristics; uint64_t SizeOfStackReserve; uint64_t SizeOfStackCommit; uint64_t SizeOfHeapReserve; uint64_t SizeOfHeapCommit; uint32_t LoaderFlags; uint32_t NumberOfRvaAndSizes; uint32_t DataDirectory[32]; };
-struct EXPORT_DIRECTORY_NT { uint32_t Characteristics; uint32_t TimeDateStamp; uint16_t MajorVersion; uint16_t MinorVersion; uint32_t Name; uint32_t Base; uint32_t NumberOfFunctions; uint32_t NumberOfNames; uint32_t AddressOfFunctions; uint32_t AddressOfNames; uint32_t AddressOfNameOrdinals; };
+struct DOS_HEADER { uint16_t e_magic; uint16_t e_cblp; uint16_t e_cp; uint16_t e_crlc; uint16_t e_cparhdr; uint16_t e_minalloc; uint16_t e_maxalloc; uint16_t e_ss; uint16_t e_sp; uint16_t e_csum; uint16_t e_ip; uint16_t e_cs; uint16_t e_lfarlc; uint16_t e_ovno; uint16_t e_res[4]; uint16_t e_oemid; uint16_t e_oeminfo; uint16_t e_res2[10]; int32_t e_lfanew; };
+struct NT_HEADERS { uint32_t Signature; uint16_t Machine; uint16_t NumberOfSections; uint32_t TimeDateStamp; uint32_t PointerToSymbolTable; uint32_t NumberOfSymbols; uint16_t SizeOfOptionalHeader; uint16_t Characteristics; uint16_t Magic; uint8_t MajorLinkerVersion; uint8_t MinorLinkerVersion; uint32_t SizeOfCode; uint32_t SizeOfInitializedData; uint32_t SizeOfUninitializedData; uint32_t AddressOfEntryPoint; uint32_t BaseOfCode; uint64_t ImageBase; uint32_t SectionAlignment; uint32_t FileAlignment; uint16_t MajorOperatingSystemVersion; uint16_t MinorOperatingSystemVersion; uint16_t MajorImageVersion; uint16_t MinorImageVersion; uint16_t MajorSubsystemVersion; uint16_t MinorSubsystemVersion; uint32_t Win32VersionValue; uint32_t SizeOfImage; uint32_t SizeOfHeaders; uint32_t CheckSum; uint16_t Subsystem; uint16_t DllCharacteristics; uint64_t SizeOfStackReserve; uint64_t SizeOfStackCommit; uint64_t SizeOfHeapReserve; uint64_t SizeOfHeapCommit; uint32_t LoaderFlags; uint32_t NumberOfRvaAndSizes; uint32_t DataDirectory[16]; };
+struct EXPORT_DIRECTORY { uint32_t Characteristics; uint32_t TimeDateStamp; uint16_t MajorVersion; uint16_t MinorVersion; uint32_t Name; uint32_t Base; uint32_t NumberOfFunctions; uint32_t NumberOfNames; uint32_t AddressOfFunctions; uint32_t AddressOfNames; uint32_t AddressOfNameOrdinals; };
 
-inline DOS_HEADER_NT* get_dos(void* base) noexcept { return static_cast<DOS_HEADER_NT*>(base); }
-inline NT_HEADERS_NT* get_nt(void* base) noexcept {
+inline DOS_HEADER* get_dos(void* base) noexcept { return static_cast<DOS_HEADER*>(base); }
+inline NT_HEADERS* get_nt(void* base) noexcept {
     auto dos = get_dos(base);
     if (!dos || dos->e_magic != 0x5A4D) return nullptr;
-    return reinterpret_cast<NT_HEADERS_NT*>(static_cast<char*>(base) + dos->e_lfanew);
+    return reinterpret_cast<NT_HEADERS*>(static_cast<char*>(base) + dos->e_lfanew);
 }
-inline EXPORT_DIRECTORY_NT* get_export(void* base) noexcept {
+inline EXPORT_DIRECTORY* get_export(void* base) noexcept {
     auto nt = get_nt(base);
     if (!nt || nt->Signature != 0x4550) return nullptr;
     uint32_t rva = nt->DataDirectory[0];
     if (!rva) return nullptr;
-    return reinterpret_cast<EXPORT_DIRECTORY_NT*>(static_cast<char*>(base) + rva);
+    return reinterpret_cast<EXPORT_DIRECTORY*>(static_cast<char*>(base) + rva);
 }
 inline void* get_proc(void* base, const char* name) noexcept {
     auto exp = get_export(base);
@@ -513,6 +596,7 @@ public:
     bool operator!() const noexcept { return handle_ == nullptr; }
     template<typename T>
     [[nodiscard]] T get_function(const char* name) const noexcept {
+        if (!handle_) return nullptr;
         return reinterpret_cast<T>(get_proc(handle_, name));
     }
     template<typename T>
@@ -559,9 +643,12 @@ private:
 
 #endif
 
-}
+} // namespace stealth
 
-#define S(str) stealth_encrypted_char<sizeof(str) - 1, __COUNTER__>(str)
-#define SW(str) stealth_encrypted_wchar<(sizeof(str) - 1) / sizeof(wchar_t), __COUNTER__>(str)
+#define STEALTH_S_IMPL(str, idx) ::stealth::detail::encrypt_string<sizeof(str) - 1, idx>(str)
+#define STEALTH_SW_IMPL(str, idx) ::stealth::detail::encrypt_wstring<(sizeof(str) - 1) / sizeof(wchar_t), idx>(str)
+
+#define S(str) STEALTH_S_IMPL(str, __COUNTER__)
+#define SW(str) STEALTH_SW_IMPL(str, __COUNTER__)
 
 #endif

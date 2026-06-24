@@ -8,28 +8,28 @@ int main() {
 
     std::cout << "[*] Protecting server configuration...\n\n";
 
-    auto db_connection = stealth::S("Server=db.prod.internal;Database=users;User=admin;Password=P@ssw0rd123!");
+    auto db_connection = S("Server=db.prod.internal;Database=users;User=admin;Password=P@ssw0rd123!");
     std::cout << "[*] DB Connection String: " << db_connection << "\n";
 
-    auto redis_password = stealth::S("redis_prod_password_xyz789");
+    auto redis_password = S("redis_prod_password_xyz789");
     std::cout << "[*] Redis Password: " << redis_password << "\n";
 
-    auto jwt_secret = stealth::S("JWT_SECRET_KEY_SUPER_SECURE_123456789");
+    auto jwt_secret = S("JWT_SECRET_KEY_SUPER_SECURE_123456789");
     std::cout << "[*] JWT Secret: " << jwt_secret << "\n";
 
-    auto aws_access_key = stealth::S("AKIAIOSFODNN7EXAMPLE");
+    auto aws_access_key = S("AKIAIOSFODNN7EXAMPLE");
     std::cout << "[*] AWS Access Key: " << aws_access_key << "\n";
 
-    auto aws_secret_key = stealth::S("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+    auto aws_secret_key = S("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
     std::cout << "[*] AWS Secret Key: " << aws_secret_key << "\n";
 
-    auto internal_api_endpoint = stealth::S("https://internal-api.company.local/v2/");
+    auto internal_api_endpoint = S("https://internal-api.company.local/v2/");
     std::cout << "[*] Internal API Endpoint: " << internal_api_endpoint << "\n";
 
-    auto encryption_key = stealth::S("ENCRYPT_KEY_AES256_PROD_2024");
+    auto encryption_key = S("ENCRYPT_KEY_AES256_PROD_2024");
     std::cout << "[*] Encryption Key: " << encryption_key << "\n";
 
-    auto smtp_password = stealth::S("smtp_server_password_2024!");
+    auto smtp_password = S("smtp_server_password_2024!");
     std::cout << "[*] SMTP Password: " << smtp_password << "\n";
 
     std::cout << "\n[*] Encoding sensitive data...\n";
@@ -41,17 +41,17 @@ int main() {
 
     std::cout << "\n[*] Testing dynamic API resolution (no IAT)...\n";
 
-    using VirtualAlloc_t = LPVOID(*)(HMODULE, SIZE_T, DWORD, DWORD);
+    using VirtualAlloc_t = LPVOID(*)(LPVOID, SIZE_T, DWORD, DWORD);
     auto VirtualAlloc = stealth::get_function<VirtualAlloc_t>("kernel32.dll", "VirtualAlloc");
     if (VirtualAlloc) {
         std::cout << "[+] VirtualAlloc resolved dynamically\n";
         auto mem = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (mem) {
             std::cout << "[+] Memory allocated at: " << mem << "\n";
-            using VirtualFree_t = BOOL(*)(HMODULE, LPVOID, SIZE_T, DWORD);
+            using VirtualFree_t = BOOL(*)(LPVOID, SIZE_T, DWORD);
             auto VirtualFree = stealth::get_function<VirtualFree_t>("kernel32.dll", "VirtualFree");
             if (VirtualFree) {
-                VirtualFree(nullptr, mem, 0, MEM_RELEASE);
+                VirtualFree(mem, 0, MEM_RELEASE);
                 std::cout << "[+] Memory freed successfully\n";
             }
         }

@@ -10,7 +10,9 @@ int main() {
 
     auto decoded = stealth::encoding::base64_decode(encoded);
     if (decoded.has_value()) {
-        std::cout << "Base64 decoded: " << *decoded << "\n";
+        std::cout << "Base64 decoded: ";
+        for (auto b : decoded) std::cout << (char)b;
+        std::cout << "\n";
     }
 
     auto hex = stealth::encoding::hex_encode("hello world", 11);
@@ -19,7 +21,7 @@ int main() {
     auto hex_decoded = stealth::encoding::hex_decode(hex);
     if (hex_decoded.has_value()) {
         std::cout << "Hex decoded: ";
-        for (auto b : *hex_decoded) std::cout << (char)b;
+        for (auto b : hex_decoded) std::cout << (char)b;
         std::cout << "\n";
     }
 

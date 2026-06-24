@@ -12,21 +12,22 @@ void print_separator(const char* title) {
 
 void demonstrate_string_encryption() {
     print_separator("COMPILE-TIME STRING ENCRYPTION");
-    auto sensitive_api_key = stealth::S("sk-live-abc123def456ghi789jkl012");
+    auto sensitive_api_key = S("sk-live-abc123def456ghi789jkl012");
     std::cout << "[+] Encrypted API Key: " << sensitive_api_key << "\n";
     std::cout << "[*] String length: " << std::strlen(sensitive_api_key) << "\n";
-    auto connection_string = stealth::S("Server=prod.db.local;Password=Secret123!");
+    auto connection_string = S("Server=prod.db.local;Password=Secret123!");
     std::cout << "[+] Connection String: " << connection_string << "\n";
-    auto jwt_secret = stealth::S("JWT_SECRET_SUPER_LONG_KEY_FOR_PRODUCTION_ENVIRONMENT");
+    auto jwt_secret = S("JWT_SECRET_SUPER_LONG_KEY_FOR_PRODUCTION_ENVIRONMENT");
     std::cout << "[+] JWT Secret: " << jwt_secret << "\n";
-    auto license_key = stealth::S("LICENSE-KEY-A1B2-C3D4-E5F6-G7H8");
+    auto license_key = S("LICENSE-KEY-A1B2-C3D4-E5F6-G7H8");
     std::cout << "[+] License Key: " << license_key << "\n";
-    auto admin_password = stealth::S("AdminP@ssw0rd!2024");
+    auto admin_password = S("AdminP@ssw0rd!2024");
     std::cout << "[+] Admin Password: " << admin_password << "\n";
     std::cout << "\n[*] Wide string encryption:\n";
-    auto wide_title = stealth::SW(L"StealthLib Wide String Test");
-    auto wide_msg = stealth::SW(L"All sensitive strings are encrypted at compile-time!");
+    auto wide_title = SW(L"StealthLib Wide String Test");
+    auto wide_msg = SW(L"All sensitive strings are encrypted at compile-time!");
     std::wcout << L"[+] Wide Title: " << wide_title << L"\n";
+    std::wcout << L"[+] Wide Message: " << wide_msg << L"\n";
 }
 
 void demonstrate_peb_resolution() {
@@ -69,7 +70,11 @@ void demonstrate_encoding() {
     std::cout << "[+] Original: " << original << "\n";
     std::cout << "[+] Base64 Encoded: " << encoded << "\n";
     auto decoded = stealth::encoding::base64_decode(encoded);
-    if (decoded.has_value()) std::cout << "[+] Base64 Decoded: " << *decoded << "\n";
+    if (decoded.has_value()) {
+        std::cout << "[+] Base64 Decoded: ";
+        for (auto b : decoded) std::cout << static_cast<char>(b);
+        std::cout << "\n";
+    }
     std::cout << "\n[*] Testing Hex encoding...\n";
     auto hex_encoded = stealth::encoding::hex_encode(original);
     std::cout << "[+] Hex Encoded: " << hex_encoded << "\n";
@@ -121,27 +126,27 @@ void demonstrate_secure_memory() {
 }
 
 void demonstrate_stealth_api() {
-    print_separator("STEALTH_API TEMPLATE");
+    print_separator("stealth::stealth_api TEMPLATE");
     auto MessageBoxW_fn = stealth::stealth_api<int(HWND, LPCWSTR, LPCWSTR, UINT)>("user32.dll", "MessageBoxW");
     if (MessageBoxW_fn.is_valid()) {
-        std::cout << "[+] stealth_api resolved MessageBoxW\n";
-        auto title = stealth::SW(L"StealthLib Demo");
-        auto msg = stealth::SW(L"STEALTH_API works perfectly!\nAll functions resolved dynamically.");
+        std::cout << "[+] stealth::stealth_api resolved MessageBoxW\n";
+        auto title = SW(L"StealthLib Demo");
+        auto msg = SW(L"stealth::stealth_api works perfectly!\nAll functions resolved dynamically.");
         MessageBoxW_fn.get()(nullptr, msg, title, MB_OK | MB_ICONINFORMATION);
     }
     auto GetTickCount64_fn = stealth::stealth_api<ULONGLONG()>("kernel32.dll", "GetTickCount64");
     if (GetTickCount64_fn.is_valid()) {
-        std::cout << "[+] stealth_api resolved GetTickCount64\n";
+        std::cout << "[+] stealth::stealth_api resolved GetTickCount64\n";
         std::cout << "[*] System uptime: " << GetTickCount64_fn.get()() << " ms\n";
     }
-    auto VirtualAlloc_fn = stealth::stealth_api<LPVOID(HMODULE, SIZE_T, DWORD, DWORD)>("kernel32.dll", "VirtualAlloc");
+    auto VirtualAlloc_fn = stealth::stealth_api<LPVOID(LPVOID, SIZE_T, DWORD, DWORD)>("kernel32.dll", "VirtualAlloc");
     if (VirtualAlloc_fn.is_valid()) {
-        std::cout << "[+] stealth_api resolved VirtualAlloc\n";
+        std::cout << "[+] stealth::stealth_api resolved VirtualAlloc\n";
         auto mem = VirtualAlloc_fn.get()(nullptr, 8192, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (mem) {
             std::cout << "[+] Allocated memory at: " << mem << "\n";
-            auto VirtualFree_fn = stealth::stealth_api<BOOL(HMODULE, LPVOID, SIZE_T, DWORD)>("kernel32.dll", "VirtualFree");
-            if (VirtualFree_fn.is_valid()) { VirtualFree_fn.get()(nullptr, mem, 0, MEM_RELEASE); std::cout << "[+] Memory freed\n"; }
+            auto VirtualFree_fn = stealth::stealth_api<BOOL(LPVOID, SIZE_T, DWORD)>("kernel32.dll", "VirtualFree");
+            if (VirtualFree_fn.is_valid()) { VirtualFree_fn.get()(mem, 0, MEM_RELEASE); std::cout << "[+] Memory freed\n"; }
         }
     }
 }

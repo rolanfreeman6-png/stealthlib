@@ -1,5 +1,6 @@
 # Build outputs
 build/
+build*/
 *.exe
 *.dll
 *.so
@@ -13,16 +14,21 @@ build/
 *.vcxproj
 *.vcxproj.filters
 
-# CMake
+# CMake generated files
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 Makefile
 *.cmake
+!cmake/*.cmake.in
+!tests/binary_scan.cmake
 
 # Testing
 Testing/
 CTestTestfile.cmake
+
+# Local working directories
+.kilo/
 
 # OS
 .DS_Store

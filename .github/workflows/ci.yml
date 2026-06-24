@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  windows-msvc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure CMake
+        run: |
+          mkdir build
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
+      
+      - name: Build
+        run: cmake --build build --config Release
+      
+      - name: Run Examples
+        run: |
+          ./build/examples/Release/minimal_test.exe
+          ./build/examples/Release/game_protection.exe
+          ./build/examples/Release/server_protection.exe
+
+  windows-clang:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure CMake (Clang)
+        run: |
+          mkdir build
+          cmake -S . -B build -G "LLVM" -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
+      
+      - name: Build
+        run: cmake --build build --config Release
+
+  linux-gcc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install GCC
+        run: sudo apt-get update && sudo apt-get install -y g++-13 cmake
+      
+      - name: Configure CMake
+        run: mkdir build && cmake -S . -B build -DCMAKE_CXX_COMPILER=g++-13 -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
+      
+      - name: Build
+        run: cmake --build build --config Release
+
+  linux-clang:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Clang
+        run: sudo apt-get update && sudo apt-get install -y clang cmake
+      
+      - name: Configure CMake
+        run: mkdir build && cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
+      
+      - name: Build
+        run: cmake --build build --config Release

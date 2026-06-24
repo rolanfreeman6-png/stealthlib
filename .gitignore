@@ -1,0 +1,33 @@
+# Build outputs
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Testing
+Testing/
+CTestTestfile.cmake
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+*.tmp

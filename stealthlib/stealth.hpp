@@ -4,14 +4,14 @@
 
 #define STEALTH_VERSION_STRING "1.0.0"
 
-#include <type_traits>
-#include <cmath>
+#include <atomic>
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
 #include <string>
 #include <string_view>
 #include <array>
+#include <type_traits>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -39,86 +39,99 @@ namespace detail {
         return v; 
     }
     
-    constexpr uint8_t derive_byte(uint64_t index, size_t pos) noexcept { 
-        return static_cast<uint8_t>((mix(key_seed + index * 0x9E3779B97F4A7C15ULL) >> (pos * 8)) & 0xFF); 
+    constexpr uint64_t make_key(uint64_t line, uint64_t counter, uint64_t size, uint64_t tag) noexcept {
+        return mix(key_seed ^ (line * 0x9E3779B97F4A7C15ULL) ^ (counter * 0xBF58476D1CE4E5B9ULL) ^ (size << 17) ^ tag);
     }
-    
-    template<size_t N, size_t Idx>
-    struct encrypted_string_impl {
-        mutable std::array<char, N> encrypted{};
-        mutable char buffer[N + 1];
-        mutable bool decrypted = false;
-        
-        constexpr encrypted_string_impl(const char* src) noexcept {
-            for (size_t i = 0; i < N; ++i) {
-                encrypted[i] = static_cast<char>(static_cast<uint8_t>(src[i]) ^ derive_byte(Idx, i % 8));
-            }
-        }
-        
-        const char* decrypt() const noexcept {
-            if (!decrypted) {
-                for (size_t i = 0; i < N; ++i) {
-                    buffer[i] = static_cast<char>(static_cast<uint8_t>(encrypted[i]) ^ derive_byte(Idx, i % 8));
-                }
-                buffer[N] = '\0';
-                decrypted = true;
-            }
-            return buffer;
-        }
-    };
-    
-    template<size_t N, size_t Idx>
-    struct encrypted_wstring_impl {
-        mutable std::array<wchar_t, N> encrypted{};
-        mutable wchar_t buffer[N + 1];
-        mutable bool decrypted = false;
-        
-        constexpr encrypted_wstring_impl(const wchar_t* src) noexcept {
-            for (size_t i = 0; i < N; ++i) {
-                uint32_t ch = static_cast<uint32_t>(src[i]);
-                ch ^= static_cast<uint32_t>(derive_byte(Idx, i % 8)) | (static_cast<uint32_t>(derive_byte(Idx, (i % 8 + 1) % 8)) << 8);
-                encrypted[i] = static_cast<wchar_t>(ch);
-            }
-        }
-        
-        const wchar_t* decrypt() const noexcept {
-            if (!decrypted) {
-                for (size_t i = 0; i < N; ++i) {
-                    uint32_t ch = static_cast<uint32_t>(encrypted[i]);
-                    ch ^= static_cast<uint32_t>(derive_byte(Idx, i % 8)) | (static_cast<uint32_t>(derive_byte(Idx, (i % 8 + 1) % 8)) << 8);
-                    buffer[i] = static_cast<wchar_t>(ch);
-                }
-                buffer[N] = L'\0';
-                decrypted = true;
-            }
-            return buffer;
-        }
-    };
-    
-    template<size_t N, size_t Idx>
-    inline const char* encrypt_string(const char* src) noexcept {
-        static encrypted_string_impl<N, Idx> holder(src);
-        return holder.decrypt();
+
+    constexpr uint8_t derive_byte(uint64_t key, size_t pos) noexcept {
+        return static_cast<uint8_t>(mix(key + static_cast<uint64_t>(pos) * 0xD6E8FEB86659FD93ULL) & 0xFF);
     }
-    
-    template<size_t N, size_t Idx>
-    inline const wchar_t* encrypt_wstring(const wchar_t* src) noexcept {
-        static encrypted_wstring_impl<N, Idx> holder(src);
-        return holder.decrypt();
+
+    template<typename CharT>
+    constexpr CharT crypt_char(CharT ch, uint64_t key, size_t index) noexcept {
+        using unsigned_char_t = std::make_unsigned_t<CharT>;
+        uint64_t mask = 0;
+        for (size_t byte = 0; byte < sizeof(CharT) && byte < 8; ++byte) {
+            mask |= static_cast<uint64_t>(derive_byte(key, index * sizeof(CharT) + byte)) << (byte * 8);
+        }
+        return static_cast<CharT>(static_cast<unsigned_char_t>(ch) ^ static_cast<unsigned_char_t>(mask));
+    }
+
+    template<typename CharT, size_t N>
+    struct encrypted_blob {
+        std::array<CharT, N> encrypted{};
+        uint64_t key = 0;
+    };
+
+    template<uint64_t Key, typename CharT, size_t N>
+    consteval encrypted_blob<CharT, N> make_encrypted_blob(const CharT (&src)[N]) noexcept {
+        encrypted_blob<CharT, N> blob{};
+        blob.key = Key;
+        for (size_t i = 0; i < N; ++i) {
+            blob.encrypted[i] = crypt_char(src[i], Key, i);
+        }
+        return blob;
+    }
+
+    template<typename CharT, size_t N>
+    class encrypted_string_impl {
+    public:
+        constexpr explicit encrypted_string_impl(const encrypted_blob<CharT, N>& blob) noexcept
+            : encrypted(blob.encrypted), key(blob.key), buffer{}, state(0) {}
+
+        const CharT* decrypt() const noexcept {
+            unsigned current = state.load(std::memory_order_acquire);
+            if (current != 2) {
+                unsigned expected = 0;
+                if (state.compare_exchange_strong(expected, 1, std::memory_order_acq_rel, std::memory_order_acquire)) {
+                    for (size_t i = 0; i < N; ++i) {
+                        buffer[i] = crypt_char(encrypted[i], key, i);
+                    }
+                    state.store(2, std::memory_order_release);
+                } else {
+                    while (state.load(std::memory_order_acquire) != 2) {
+                    }
+                }
+            }
+            return buffer.data();
+        }
+
+    private:
+        std::array<CharT, N> encrypted{};
+        uint64_t key = 0;
+        mutable std::array<CharT, N> buffer{};
+        mutable std::atomic<unsigned> state;
+    };
+
+    template<size_t N, uint64_t Key>
+    consteval auto make_char_blob(const char (&src)[N]) noexcept {
+        return make_encrypted_blob<Key>(src);
+    }
+
+    template<size_t N, uint64_t Key>
+    consteval auto make_wchar_blob(const wchar_t (&src)[N]) noexcept {
+        return make_encrypted_blob<Key>(src);
     }
 }
 
 namespace memory {
 
 inline void secure_zero(void* ptr, size_t len) noexcept {
+#ifdef _WIN32
+    if (ptr && len) SecureZeroMemory(ptr, len);
+#else
+    if (!ptr) return;
     volatile uint8_t* p = static_cast<volatile uint8_t*>(ptr);
     while (len--) *p++ = 0;
+#endif
 }
 
 inline bool compare_constant_time(const void* a, const void* b, size_t len) noexcept {
+    if (len == 0) return true;
+    if (!a || !b) return false;
     const uint8_t* A = static_cast<const uint8_t*>(a);
     const uint8_t* B = static_cast<const uint8_t*>(b);
-    uint8_t diff = 0;
+    uint32_t diff = 0;
     for (size_t i = 0; i < len; ++i) diff |= A[i] ^ B[i];
     return diff == 0;
 }
@@ -127,15 +140,17 @@ inline bool compare_constant_time(const void* a, const void* b, size_t len) noex
 
 template<size_t MaxSize = 256>
 class secure_string {
+    static_assert(MaxSize > 0, "secure_string MaxSize must be greater than zero");
 public:
     using char_type = char;
     
     secure_string() noexcept : length_(0) {
-        std::memset(data_, 0, MaxSize);
+        memory::secure_zero(data_, MaxSize);
     }
     
-    explicit secure_string(const char* str) noexcept {
-        length_ = 0;
+    explicit secure_string(const char* str) noexcept : length_(0) {
+        memory::secure_zero(data_, MaxSize);
+        if (!str) return;
         while (str[length_] != '\0' && length_ < MaxSize - 1) {
             data_[length_] = str[length_];
             ++length_;
@@ -163,7 +178,7 @@ public:
     }
     
 private:
-    char data_[MaxSize];
+    char data_[MaxSize]{};
     size_t length_;
 };
 
@@ -185,20 +200,22 @@ public:
     explicit operator bool() const noexcept { return valid; }
 };
 
-inline std::string base64_encode(const void* data, size_t len) noexcept;
-inline std::string base64_encode(const std::string_view& str) noexcept {
+inline std::string base64_encode(const void* data, size_t len);
+inline std::string base64_encode(const std::string_view& str) {
     return base64_encode(str.data(), str.size());
 }
 template<size_t MaxBytes = 4096>
 decode_result<MaxBytes> base64_decode(const std::string_view& str) noexcept;
-inline std::string hex_encode(const void* data, size_t len) noexcept;
-inline std::string hex_encode(const std::string_view& str) noexcept {
+inline std::string hex_encode(const void* data, size_t len);
+inline std::string hex_encode(const std::string_view& str) {
     return hex_encode(str.data(), str.size());
 }
 template<size_t MaxBytes = 4096>
 decode_result<MaxBytes> hex_decode(const std::string_view& str) noexcept;
 
 inline void rot13_encode(void* dst, const void* src, size_t len) noexcept {
+    if (len == 0) return;
+    if (!dst || !src) return;
     const uint8_t* s = static_cast<const uint8_t*>(src);
     uint8_t* d = static_cast<uint8_t*>(dst);
     for (size_t i = 0; i < len; ++i) {
@@ -241,6 +258,7 @@ struct xor_key {
 
 template<size_t KeySize>
 inline void xor_crypt(void* data, size_t len, const xor_key<KeySize>& key) noexcept {
+    if (len == 0 || !data || key.length == 0) return;
     uint8_t* d = static_cast<uint8_t*>(data);
     for (size_t i = 0; i < len; ++i) d[i] ^= key[i];
 }
@@ -260,7 +278,9 @@ static const char b64_alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqr
 inline char encode_b64_byte(unsigned char v) noexcept { return b64_alphabet[v & 0x3F]; }
 }
 
-inline std::string base64_encode(const void* data, size_t len) noexcept {
+inline std::string base64_encode(const void* data, size_t len) {
+    if (len == 0) return {};
+    if (!data) return {};
     const unsigned char* src = static_cast<const unsigned char*>(data);
     std::string result;
     result.reserve((len + 2) / 3 * 4);
@@ -295,6 +315,19 @@ template<size_t MaxBytes>
 decode_result<MaxBytes> base64_decode(const std::string_view& str) noexcept {
     decode_result<MaxBytes> result;
     if (str.size() % 4 != 0) return result;
+    if (str.empty()) {
+        result.valid = true;
+        return result;
+    }
+    size_t padding = 0;
+    if (!str.empty() && str[str.size() - 1] == '=') ++padding;
+    if (str.size() > 1 && str[str.size() - 2] == '=') ++padding;
+    for (size_t i = 0; i + padding < str.size(); ++i) {
+        if (str[i] == '=') return result;
+    }
+    if (padding > 2) return result;
+    const size_t required = (str.size() / 4) * 3 - padding;
+    if (required > MaxBytes) return result;
     static const int8_t b64_decode[256] = {
         -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
         -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
@@ -323,19 +356,25 @@ decode_result<MaxBytes> base64_decode(const std::string_view& str) noexcept {
                 unsigned char c = static_cast<unsigned char>(s[i + j]);
                 vals[j] = b64_decode[c];
                 if (vals[j] < 0) return result;
+            } else {
+                if (i + 4 != len_str) return result;
+                if (j < 2) return result;
+                vals[j] = 0;
             }
         }
         if (vals[0] < 0 || vals[1] < 0) return result;
-        if (out < MaxBytes) result.data[out++] = static_cast<uint8_t>((vals[0] << 2) | (vals[1] >> 4));
-        if (vals[2] >= 0 && s[i + 2] != '=' && out < MaxBytes) result.data[out++] = static_cast<uint8_t>((vals[1] << 4) | (vals[2] >> 2));
-        if (vals[3] >= 0 && s[i + 3] != '=' && out < MaxBytes) result.data[out++] = static_cast<uint8_t>((vals[2] << 6) | vals[3]);
+        result.data[out++] = static_cast<uint8_t>((vals[0] << 2) | (vals[1] >> 4));
+        if (s[i + 2] != '=') result.data[out++] = static_cast<uint8_t>((vals[1] << 4) | (vals[2] >> 2));
+        if (s[i + 3] != '=') result.data[out++] = static_cast<uint8_t>((vals[2] << 6) | vals[3]);
     }
     result.len = out;
     result.valid = true;
     return result;
 }
 
-inline std::string hex_encode(const void* data, size_t len) noexcept {
+inline std::string hex_encode(const void* data, size_t len) {
+    if (len == 0) return {};
+    if (!data) return {};
     static const char hex_chars[] = "0123456789ABCDEF";
     const unsigned char* src = static_cast<const unsigned char*>(data);
     std::string result(len * 2, '\0');
@@ -350,9 +389,10 @@ template<size_t MaxBytes>
 decode_result<MaxBytes> hex_decode(const std::string_view& str) noexcept {
     decode_result<MaxBytes> result;
     if (str.size() % 2 != 0) return result;
+    if (str.size() / 2 > MaxBytes) return result;
     size_t out = 0;
     const char* s = str.data();
-    for (size_t i = 0; i < str.size() / 2 && out < MaxBytes; ++i) {
+    for (size_t i = 0; i < str.size() / 2; ++i) {
         char h = s[i * 2], l = s[i * 2 + 1];
         int hi = 0, lo = 0;
         if (h >= '0' && h <= '9') hi = h - '0';
@@ -390,70 +430,7 @@ inline bool is_debugger_present() noexcept {
 #endif
 }
 
-inline bool check_remote_debugger() noexcept {
-#ifdef _WIN32
-    using NtQueryInformationProcess_t = int(void*, int, void*, uint32_t, uint32_t*);
-    void* ntdll = nullptr;
-    #if defined(_M_X64) || defined(__x86_64__)
-    auto peb = reinterpret_cast<void*>(__readgsqword(0x60));
-    #elif defined(_M_IX86)
-    auto peb = reinterpret_cast<void*>(__readfsdword(0x30));
-    #else
-    return false;
-    #endif
-    if (!peb) return false;
-    struct UNICODE_STRING { uint16_t Length; uint16_t MaximumLength; wchar_t* Buffer; };
-    struct LIST_ENTRY_TEMP { void* Flink; void* Blink; };
-    struct LDR_ENTRY_TEMP { LIST_ENTRY_TEMP InLoadOrderLinks; LIST_ENTRY_TEMP InMemoryOrderLinks; LIST_ENTRY_TEMP InInitializationOrderLinks; void* DllBase; void* EntryPoint; uint32_t SizeOfImage; UNICODE_STRING FullDllName; UNICODE_STRING BaseDllName; };
-    struct PEB_LDR_TEMP { uint32_t Length; uint8_t Initialized; void* SsHandle; LIST_ENTRY_TEMP InLoadOrderModuleList; };
-    struct PEB_STRUCT_TEMP { uint8_t InheritedAddressSpace; uint8_t ReadImageFileExecOptions; uint8_t BeingDebugged; uint8_t BitField; void* Mutant; void* ImageBaseAddress; PEB_LDR_TEMP* Ldr; };
-    auto pPEB = reinterpret_cast<PEB_STRUCT_TEMP*>(peb);
-    if (!pPEB->Ldr) return false;
-    auto entry = reinterpret_cast<LDR_ENTRY_TEMP*>(pPEB->Ldr->InLoadOrderModuleList.Flink);
-    while (entry && entry->BaseDllName.Buffer) {
-        if (entry->DllBase) {
-            wchar_t ntdll_name[] = L"ntdll.dll";
-            bool match = entry->BaseDllName.Length == 16;
-            if (match) {
-                for (int i = 0; i < 8 && match; ++i) {
-                    wchar_t a = ntdll_name[i], b = entry->BaseDllName.Buffer[i];
-                    if (a >= L'A' && a <= L'Z') a += 32;
-                    if (b >= L'A' && b <= L'Z') b += 32;
-                    if (a != b) match = false;
-                }
-            }
-            if (match) { ntdll = entry->DllBase; break; }
-        }
-        entry = reinterpret_cast<LDR_ENTRY_TEMP*>(entry->InLoadOrderLinks.Flink);
-    }
-    if (!ntdll) return false;
-    auto dos = static_cast<uint16_t*>(ntdll);
-    if (dos[0] != 0x5A4D) return false;
-    auto nt = reinterpret_cast<uint32_t*>(static_cast<char*>(ntdll) + reinterpret_cast<int32_t*>(ntdll)[1]);
-    if (nt[0] != 0x4550) return false;
-    auto& dir = reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(&nt[1]) + 96)[0];
-    if (!dir) return false;
-    auto exp = reinterpret_cast<uint32_t*>(static_cast<char*>(ntdll) + dir);
-    if (exp[1] == 0 || exp[3] == 0) return false;
-    auto names = reinterpret_cast<uint32_t*>(static_cast<char*>(ntdll) + exp[5]);
-    for (uint32_t i = 0; i < exp[3]; ++i) {
-        const char* name = reinterpret_cast<const char*>(ntdll) + names[i];
-        if (name && std::strcmp(name, "NtQueryInformationProcess") == 0) {
-            auto funcs = reinterpret_cast<uint32_t*>(static_cast<char*>(ntdll) + exp[4]);
-            auto ordinals = reinterpret_cast<uint16_t*>(static_cast<char*>(ntdll) + exp[6]);
-            auto proc = reinterpret_cast<NtQueryInformationProcess_t*>(static_cast<char*>(ntdll) + funcs[ordinals[i]]);
-            if (proc) {
-                int debug_port = 0;
-                uint32_t return_len = 0;
-                int result = proc(reinterpret_cast<void*>(-1), 30, &debug_port, sizeof(debug_port), &return_len);
-                return result == 0 && debug_port != 0;
-            }
-            break;
-        }
-    }
-#endif
-    return false;
-}
+inline bool check_remote_debugger() noexcept;
 
 }
 
@@ -474,12 +451,17 @@ struct PEB_LDR_TEMP2 { uint32_t Length; uint8_t Initialized; void* SsHandle; LIS
 struct PEB_STRUCT_TEMP2 { uint8_t InheritedAddressSpace; uint8_t ReadImageFileExecOptions; uint8_t BeingDebugged; uint8_t BitField; void* Mutant; void* ImageBaseAddress; PEB_LDR_TEMP2* Ldr; };
 
 inline bool get_module_base(const wchar_t* name, void** out) noexcept {
+    if (out) *out = nullptr;
+    if (!name || !out) return false;
     auto peb = reinterpret_cast<PEB_STRUCT_TEMP2*>(get_peb_ptr());
     if (!peb || !peb->Ldr) return false;
     size_t len = 0;
-    while (name[len]) ++len;
+    while (name[len] && len < 260) ++len;
+    if (len == 0 || len >= 260) return false;
+    auto head = &peb->Ldr->InLoadOrderModuleList;
     auto entry = reinterpret_cast<LDR_ENTRY_TEMP2*>(peb->Ldr->InLoadOrderModuleList.Flink);
-    while (entry && entry->BaseDllName.Buffer) {
+    for (size_t guard = 0; entry && entry != reinterpret_cast<LDR_ENTRY_TEMP2*>(head) && guard < 1024; ++guard) {
+        if (!entry->BaseDllName.Buffer) break;
         if (entry->BaseDllName.Length == static_cast<uint16_t>(len * 2)) {
             bool match = true;
             for (size_t i = 0; i < len; ++i) {
@@ -496,6 +478,8 @@ inline bool get_module_base(const wchar_t* name, void** out) noexcept {
 }
 
 inline bool get_module_base_ansi(const char* name, void** out) noexcept {
+    if (out) *out = nullptr;
+    if (!name || !out) return false;
     wchar_t wide[260] = {};
     size_t i = 0;
     while (name[i] && i < 259) {
@@ -513,36 +497,109 @@ inline DOS_HEADER* get_dos(void* base) noexcept { return static_cast<DOS_HEADER*
 inline NT_HEADERS* get_nt(void* base) noexcept {
     auto dos = get_dos(base);
     if (!dos || dos->e_magic != 0x5A4D) return nullptr;
+    if (dos->e_lfanew < static_cast<int32_t>(sizeof(DOS_HEADER))) return nullptr;
+    if (dos->e_lfanew > 0x100000) return nullptr;
     return reinterpret_cast<NT_HEADERS*>(static_cast<char*>(base) + dos->e_lfanew);
 }
+
+inline bool rva_in_image(void* base, uint32_t rva, size_t bytes = 1) noexcept {
+    auto nt = get_nt(base);
+    if (!nt || nt->Signature != 0x4550 || nt->SizeOfImage == 0) return false;
+    if (rva >= nt->SizeOfImage) return false;
+    return bytes <= static_cast<size_t>(nt->SizeOfImage - rva);
+}
+
 inline EXPORT_DIRECTORY* get_export(void* base) noexcept {
     auto nt = get_nt(base);
     if (!nt || nt->Signature != 0x4550) return nullptr;
+    if (nt->NumberOfRvaAndSizes == 0) return nullptr;
     uint32_t rva = nt->DataDirectory[0];
-    if (!rva) return nullptr;
+    uint32_t size = nt->DataDirectory[1];
+    if (!rva || size < sizeof(EXPORT_DIRECTORY)) return nullptr;
+    if (!rva_in_image(base, rva, sizeof(EXPORT_DIRECTORY))) return nullptr;
     return reinterpret_cast<EXPORT_DIRECTORY*>(static_cast<char*>(base) + rva);
 }
-inline void* get_proc(void* base, const char* name) noexcept {
+
+namespace detail {
+inline bool ascii_ieq(char a, char b) noexcept {
+    if (a >= 'A' && a <= 'Z') a = static_cast<char>(a + 32);
+    if (b >= 'A' && b <= 'Z') b = static_cast<char>(b + 32);
+    return a == b;
+}
+
+inline bool ascii_iequals(const char* a, const char* b) noexcept {
+    if (!a || !b) return false;
+    size_t guard = 0;
+    while (*a && *b && guard++ < 512) {
+        if (!ascii_ieq(*a, *b)) return false;
+        ++a;
+        ++b;
+    }
+    return *a == '\0' && *b == '\0';
+}
+}
+
+inline void* get_proc_impl(void* base, const char* name, unsigned depth) noexcept {
+    if (!base || !name || depth > 8) return nullptr;
     auto exp = get_export(base);
-    if (!exp || !exp->NumberOfNames) return nullptr;
+    auto nt = get_nt(base);
+    if (!exp || !nt || !exp->NumberOfNames || !exp->NumberOfFunctions) return nullptr;
+    if (!rva_in_image(base, exp->AddressOfNames, static_cast<size_t>(exp->NumberOfNames) * sizeof(uint32_t))) return nullptr;
+    if (!rva_in_image(base, exp->AddressOfNameOrdinals, static_cast<size_t>(exp->NumberOfNames) * sizeof(uint16_t))) return nullptr;
+    if (!rva_in_image(base, exp->AddressOfFunctions, static_cast<size_t>(exp->NumberOfFunctions) * sizeof(uint32_t))) return nullptr;
     auto names = reinterpret_cast<uint32_t*>(static_cast<char*>(base) + exp->AddressOfNames);
     auto ordinals = reinterpret_cast<uint16_t*>(static_cast<char*>(base) + exp->AddressOfNameOrdinals);
     auto funcs = reinterpret_cast<uint32_t*>(static_cast<char*>(base) + exp->AddressOfFunctions);
+    const uint32_t export_rva = nt->DataDirectory[0];
+    const uint32_t export_size = nt->DataDirectory[1];
     for (uint32_t i = 0; i < exp->NumberOfNames; ++i) {
+        if (!rva_in_image(base, names[i])) return nullptr;
         const char* n = reinterpret_cast<const char*>(base) + names[i];
         bool match = true;
         size_t j = 0;
-        for (; n[j] && name[j]; ++j) {
-            char a = n[j], b = name[j];
-            if (a >= 'A' && a <= 'Z') a += 32;
-            if (b >= 'A' && b <= 'Z') b += 32;
-            if (a != b) { match = false; break; }
+        for (; j < 512 && n[j] && name[j]; ++j) {
+            if (!detail::ascii_ieq(n[j], name[j])) { match = false; break; }
         }
+        if (j >= 512) return nullptr;
         if (match && n[j] == '\0' && name[j] == '\0') {
-            return static_cast<char*>(base) + funcs[ordinals[i]];
+            uint16_t ordinal = ordinals[i];
+            if (ordinal >= exp->NumberOfFunctions) return nullptr;
+            uint32_t func_rva = funcs[ordinal];
+            if (!rva_in_image(base, func_rva)) return nullptr;
+            if (func_rva >= export_rva && func_rva < export_rva + export_size) {
+                const char* forwarder = static_cast<const char*>(base) + func_rva;
+                char module[128]{};
+                char function[128]{};
+                size_t m = 0;
+                size_t f = 0;
+                while (forwarder[m] && forwarder[m] != '.' && m < sizeof(module) - 5) {
+                    module[m] = forwarder[m];
+                    ++m;
+                }
+                if (forwarder[m] != '.') return nullptr;
+                const size_t dot = m;
+                module[m++] = '.';
+                module[m++] = 'd';
+                module[m++] = 'l';
+                module[m++] = 'l';
+                module[m] = '\0';
+                while (forwarder[dot + 1 + f] && f < sizeof(function) - 1) {
+                    function[f] = forwarder[dot + 1 + f];
+                    ++f;
+                }
+                function[f] = '\0';
+                void* forwarded_base = nullptr;
+                if (!get_module_base_ansi(module, &forwarded_base)) return nullptr;
+                return get_proc_impl(forwarded_base, function, depth + 1);
+            }
+            return static_cast<char*>(base) + func_rva;
         }
     }
     return nullptr;
+}
+
+inline void* get_proc(void* base, const char* name) noexcept {
+    return get_proc_impl(base, name, 0);
 }
 
 template<typename T>
@@ -611,44 +668,67 @@ template<typename FuncT>
 class stealth_api {
 public:
     using func_type = FuncT;
+    using pointer_type = std::conditional_t<std::is_pointer_v<FuncT>, FuncT, std::add_pointer_t<FuncT>>;
 
     stealth_api() noexcept : func_ptr_(nullptr) {}
     stealth_api(std::nullptr_t) noexcept : func_ptr_(nullptr) {}
     stealth_api(const char* module_name, const char* function_name) noexcept {
         void* base = nullptr;
         if (get_module_base_ansi(module_name, &base)) {
-            func_ptr_ = reinterpret_cast<FuncT*>(get_proc(base, function_name));
+            func_ptr_ = reinterpret_cast<pointer_type>(get_proc(base, function_name));
         } else {
             func_ptr_ = nullptr;
         }
     }
 
-    [[nodiscard]] FuncT* get() const noexcept { return func_ptr_; }
+    [[nodiscard]] pointer_type get() const noexcept { return func_ptr_; }
     [[nodiscard]] bool is_valid() const noexcept { return func_ptr_ != nullptr; }
     bool operator!() const noexcept { return func_ptr_ == nullptr; }
+    explicit operator bool() const noexcept { return is_valid(); }
     
     void reset() noexcept { func_ptr_ = nullptr; }
     void reset(const char* module_name, const char* function_name) noexcept {
         void* base = nullptr;
         if (get_module_base_ansi(module_name, &base)) {
-            func_ptr_ = reinterpret_cast<FuncT*>(get_proc(base, function_name));
+            func_ptr_ = reinterpret_cast<pointer_type>(get_proc(base, function_name));
         } else {
             func_ptr_ = nullptr;
         }
     }
 
 private:
-    FuncT* func_ptr_;
+    pointer_type func_ptr_;
 };
+
+namespace detection {
+inline bool check_remote_debugger() noexcept {
+    using NtQueryInformationProcess_t = int(void*, int, void*, uint32_t, uint32_t*);
+    auto proc = reinterpret_cast<NtQueryInformationProcess_t*>(get_nt_api("NtQueryInformationProcess"));
+    if (!proc) return false;
+    uintptr_t debug_port = 0;
+    uint32_t return_len = 0;
+    int result = proc(reinterpret_cast<void*>(-1), 7, &debug_port, sizeof(debug_port), &return_len);
+    return result == 0 && debug_port != 0;
+}
+}
 
 #endif
 
 } // namespace stealth
 
-#define STEALTH_S_IMPL(str, idx) ::stealth::detail::encrypt_string<sizeof(str) - 1, idx>(str)
-#define STEALTH_SW_IMPL(str, idx) ::stealth::detail::encrypt_wstring<(sizeof(str) - 1) / sizeof(wchar_t), idx>(str)
+#define STEALTH_S_IMPL(str, line, counter) ([]() noexcept { \
+    constexpr auto stealth_blob = ::stealth::detail::make_char_blob<sizeof(str), ::stealth::detail::make_key((line), (counter), sizeof(str), 0x5354524152524159ULL)>(str); \
+    static const ::stealth::detail::encrypted_string_impl<char, sizeof(str)> stealth_holder(stealth_blob); \
+    return stealth_holder.decrypt(); \
+}())
 
-#define S(str) STEALTH_S_IMPL(str, __COUNTER__)
-#define SW(str) STEALTH_SW_IMPL(str, __COUNTER__)
+#define STEALTH_SW_IMPL(str, line, counter) ([]() noexcept { \
+    constexpr auto stealth_blob = ::stealth::detail::make_wchar_blob<sizeof(str) / sizeof(wchar_t), ::stealth::detail::make_key((line), (counter), sizeof(str), 0x5753545241525241ULL)>(str); \
+    static const ::stealth::detail::encrypted_string_impl<wchar_t, sizeof(str) / sizeof(wchar_t)> stealth_holder(stealth_blob); \
+    return stealth_holder.decrypt(); \
+}())
+
+#define S(str) STEALTH_S_IMPL(str, __LINE__, __COUNTER__)
+#define SW(str) STEALTH_SW_IMPL(str, __LINE__, __COUNTER__)
 
 #endif

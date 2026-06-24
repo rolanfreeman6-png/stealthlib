@@ -1,4 +1,4 @@
-#include "../stealthlib/stealth.hpp"
+#include "stealthlib/stealth.hpp"
 #include <iostream>
 #include <chrono>
 #include <vector>

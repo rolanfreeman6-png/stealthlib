@@ -169,16 +169,50 @@ if (stealth::memory::compare_constant_time(a, b, len)) {
 
 ---
 
+## Project Structure
+
+```
+stealthlib/
+├── stealthlib/            # ← Library headers (add to include path)
+│   ├── stealth.hpp        #    Main header
+│   ├── stealth_strings.hpp
+│   ├── stealth_peb.hpp
+│   ├── stealth_iat.hpp
+│   └── stealth_encode.hpp
+├── examples/              # ← Example programs
+│   ├── minimal_test.cpp   #    Basic functionality test
+│   ├── full_demo.cpp      #    Complete feature demo
+│   ├── game_protection.cpp
+│   └── server_protection.cpp
+├── tests/                 # ← Unit tests
+│   ├── string_test.cpp
+│   ├── peb_test.cpp
+│   └── integration_test.cpp
+├── benchmark/             # ← Performance benchmarks
+│   └── benchmark.cpp
+├── docs/                  # ← Documentation
+│   ├── INSTALL.md
+│   └── EXAMPLES.md
+├── CMakeLists.txt         # ← Build system
+└── LICENSE
+```
+
 ## Build
 
-### CMake
+### CMake (Recommended)
 
 ```bash
-git clone https://github.com/rolanfreeman6/stealthlib.git
+git clone https://github.com/rolanfreeman6-png/stealthlib.git
 cd stealthlib
 mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake .. -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_EXAMPLES=ON
 cmake --build .
+```
+
+Run examples:
+```bash
+./examples/minimal_test.exe
+./examples/full_demo.exe
 ```
 
 ### Visual Studio
@@ -186,6 +220,13 @@ cmake --build .
 Open in Visual Studio or use:
 ```bash
 .\compile.bat
+```
+
+### As a Header-Only Library
+
+Copy `stealthlib/` folder to your project and:
+```cpp
+#include "stealthlib/stealth.hpp"
 ```
 
 ---

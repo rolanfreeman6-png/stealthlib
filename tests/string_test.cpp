@@ -1,4 +1,4 @@
-#include "../stealthlib/stealth.hpp"
+#include "stealthlib/stealth.hpp"
 #include <cassert>
 #include <cstring>
 #include <iostream>

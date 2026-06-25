@@ -16,19 +16,22 @@ hash-based API resolution and anti-debug signal suite in one drop-in bundle.
 | --- | --- | --- |
 | **Correctness** | **9.3 / 10** | **9/9 ctests pass** under `-Wall -Wextra -Wpedantic -Wshadow -Werror`; ASan + UBSan clean (Debug build); deterministic builds (byte-identical SHA256 with same `STEALTH_BUILD_KEY`); plaintext `S("...")` literals do not appear in `.rodata`; 4 FIPS-180-4 SHA-256 Known-Answer vectors pass byte-exact; libFuzzer harness `LLVMFuzzerTestOneInput` defined for CI adversarial runs |
 | **Uniqueness** | **7.5 / 10** | Real "no win32 API strings" killer feature works; anti-debug signal suite > xorstr; IAT/EAT integrity basic hdr-only libs; **anti-VM suite (cpuid + DMI/registry) shipped**; **SHA-256 inline-hook fingerprint with FIPS-180-4 ground truth shipped**; **build-time encryption rotation ships** (16 variants per `STEALTH_BUILD_KEY % 16`) |
-| **Simplicity** | **8.0 / 10** | Single header, `#include "stealthlib/stealth.hpp"`; no link deps; ~1500 LoC; small primitives that compose |
+| **Simplicity** | **8.0 / 10** | Single header, `#include "stealthlib/stealth.hpp"`; no link deps; ~1722 LoC; small primitives that compose |
 
 **Quality matrix all green on Linux GCC 15.2:**
 
 ```
-ctest --output-on-failure    :  9/9 PASS
-ctest ASan + UBSan (Debug)   :  9/9 PASS  (no UB reports)
-strict -Werror -Wshadow build :  9/9 PASS  (-Werror clean)
-deterministic builds         :  byte-identical SHA256 across rebuilds
-libFuzzer harness            :  fuzz_hashes exit=0 over seed corpus
+ctest --output-on-failure                                  : 9/9 PASS
+ctest (ASan + UBSan, Debug, GCC 15.2 strict-warnings)      : 9/9 PASS
+ctest (strict -Werror -Wshadow)                            : 9/9 PASS
+deterministic builds                                      : byte-identical SHA256 across rebuilds
+libFuzzer harness                                          : fuzz_hashes exit=0 over seed corpus
 ```
 
----
+> **Important macro note.** `S("…")` is a preprocessor macro. The preprocessor
+> will not expand namespace-qualified identifiers, so `stealth::S(…)`
+> silently bypasses the macro and tries to call a non-existent function.
+> Always use the bare form `S("…")` and `SW(L"…")`.
 
 ---
 

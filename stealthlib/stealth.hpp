@@ -3,9 +3,9 @@
 #define STEALTH_HPP
 
 #define STEALTH_VERSION_MAJOR 2
-#define STEALTH_VERSION_MINOR 0
+#define STEALTH_VERSION_MINOR 1
 #define STEALTH_VERSION_PATCH 0
-#define STEALTH_VERSION_STRING "2.0.0"
+#define STEALTH_VERSION_STRING "2.1.0"
 
 #include <cstdint>
 #include <cstddef>
@@ -26,9 +26,16 @@
 #include <windows.h>
 #endif
 
+// STEALTH_BUILD_KEY is REQUIRED at compile time and MUST be unique per
+// release. CMakeLists.txt generates it from git short SHA + timestamp
+// (MD5-truncated to 64 bits). Do NOT ship a default: two binaries built
+// from the same source revision but with the default key would be
+// indistinguishable, defeating the whole "bind binary to build" claim.
+// If this trips, you likely compiled a single .cpp without using CMake.
 #ifndef STEALTH_BUILD_KEY
-#define STEALTH_BUILD_KEY 0x5EED5EED5EED5EEDULL
+#error "STEALTH_BUILD_KEY is not defined. Build via CMake (it auto-generates from git SHA + timestamp)."
 #endif
+static_assert(STEALTH_BUILD_KEY != 0, "STEALTH_BUILD_KEY must be non-zero.");
 
 namespace stealth {
 
@@ -49,14 +56,23 @@ constexpr uint64_t fnv1a_64(const char* s, size_t n) noexcept {
     return h;
 }
 
+// Wide-character FNV hashing: always walks the LOW 16 bits of each
+// wchar_t in little-endian order (UTF-16LE codepoint). The previous
+// implementation used `sizeof(wchar_t)` bytes per character, which
+// produces DIFFERENT hashes on Linux (wchar_t = 4 bytes, UTF-32) vs
+// Windows (wchar_t = 2 bytes, UTF-16). For a hash-based cross-platform
+// API identifier registry to work, the byte width must be stable.
+// Truncation to low 16 bits is accepted: every wchar_t at API surfaces
+// in this library is either ASCII (L"hello") or BMP-only; surrogate
+// pairs are not used.
 constexpr uint64_t fnv1a_wide(const wchar_t* s, size_t n) noexcept {
     uint64_t h = fnv1a_basis;
     for (size_t i = 0; i < n; ++i) {
-        for (unsigned b = 0; b < sizeof(wchar_t); ++b) {
-            uint8_t byte = static_cast<uint8_t>((static_cast<uint32_t>(s[i]) >> (b * 8)) & 0xFFu);
-            h ^= static_cast<uint64_t>(byte);
-            h *= fnv1a_prime;
-        }
+        uint32_t ch = static_cast<uint32_t>(s[i]) & 0xFFFFu;
+        h ^= static_cast<uint64_t>(ch & 0xFFu);
+        h *= fnv1a_prime;
+        h ^= static_cast<uint64_t>((ch >> 8) & 0xFFu);
+        h *= fnv1a_prime;
     }
     return h;
 }
@@ -602,11 +618,25 @@ public:
 
     explicit secure_string(const char* str) noexcept : length_(0) {
         std::memset(data_, 0, MaxSize);
-        while (str[length_] != '\0' && length_ < MaxSize - 1) {
+        // Defensive against nullptr: previous version read
+        // *(nullptr) on `str[length_] != '\0'`. Now length stays 0
+        // and the buffer is just zeroed.
+        if (!str) return;
+        bool truncated = false;
+        while (str[length_] != '\0' && length_ + 1 < MaxSize) {
             data_[length_] = str[length_];
             ++length_;
         }
-        data_[length_] = '\0';
+        // Use `length_ + 1 < MaxSize` (not `length_ < MaxSize - 1`)
+        // so that there is always room for the NUL terminator byte.
+        if (str[length_] != '\0') {
+            // String did NOT fit; terminate and flag truncation.
+            data_[length_] = '\0';
+            truncated = true;
+            (void)truncated;  // currently silent; reserved for future API
+        } else {
+            data_[length_] = '\0';
+        }
     }
 
     secure_string(const secure_string&) = delete;
@@ -617,8 +647,12 @@ public:
         length_ = 0;
     }
 
-    [[nodiscard]] char* data() noexcept { return data_; }
-    [[nodiscard]] const char* data() const noexcept { return data_; }
+    // raw_data() exposes the entire MaxSize buffer — past `length()`
+    // the bytes are zero-initialised but not confidential. Callers that
+    // need bound-checked access should use view() / c_str() instead.
+    [[nodiscard]] char* raw_data() noexcept { return data_; }
+    [[nodiscard]] const char* raw_data() const noexcept { return data_; }
+
     [[nodiscard]] const char* c_str() const noexcept { return data_; }
     [[nodiscard]] size_t length() const noexcept { return length_; }
     [[nodiscard]] size_t size() const noexcept { return length_; }
@@ -681,7 +715,15 @@ struct xor_key {
         }
     }
 
-    [[nodiscard]] uint8_t operator[](size_t idx) const noexcept { return data[idx % length]; }
+    [[nodiscard]] uint8_t operator[](std::size_t idx) const noexcept {
+        // length == 0 (default-constructed xor_key) used to trigger
+        // division-by-zero UB on `idx % length`. Return 0 (no-op key)
+        // so this is safe even if a caller forgot to initialise the
+        // key, which is a real bug-pattern xor_crypt triggers if
+        // data length is 0.
+        if (length == 0) return 0;
+        return data[idx % length];
+    }
 };
 
 template<size_t KeySize>
@@ -880,13 +922,24 @@ inline bool check_remote_debugger() noexcept {
     auto export_rva = *reinterpret_cast<uint32_t*>(nt + 0x78 + 0x80);
 
     if (!export_rva) return false;
-    auto exp = reinterpret_cast<uint8_t*>(ntdll) + export_rva;
-    auto names = reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(ntdll)
-        + *reinterpret_cast<uint32_t*>(exp + 0x20));
-    auto ordinals = reinterpret_cast<uint16_t*>(reinterpret_cast<uint8_t*>(ntdll)
-        + *reinterpret_cast<uint32_t*>(exp + 0x24));
-    auto funcs = reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(ntdll)
-        + *reinterpret_cast<uint32_t*>(exp + 0x1C));
+    // Resolve OptionalHeader.DataDirectory[i] correctly: PE32+ magic
+    // (0x20b) puts DataDirectory at nt + 0x88; PE32 magic (0x10b) puts
+    // it at nt + 0x78. The original code used `nt + 0x78 + 0x80 = 0xF8`
+    // which is wrong on both: it's 0x70 past the PE32+ export dir
+    // entry and 0x80 past the PE32 export dir entry. Result: misread
+    // RVA, OOB memory, or wrong export function lookup on x64.
+    auto dos = reinterpret_cast<uint8_t*>(ntdll);
+    auto pe_off = *reinterpret_cast<uint32_t*>(dos + 0x3C);
+    auto nt8 = reinterpret_cast<uint8_t*>(ntdll) + pe_off;
+    uint16_t magic = *reinterpret_cast<uint16_t*>(nt8 + 0x18);
+    std::size_t dd_offset = (magic == 0x20b) ? 0x88 : 0x78;
+    uint32_t export_rva = *reinterpret_cast<uint32_t*>(nt8 + dd_offset);
+
+    if (!export_rva) return false;
+    auto exp = nt8 + export_rva;
+    auto names = reinterpret_cast<uint32_t*>(nt8 + *reinterpret_cast<uint32_t*>(exp + 0x20));
+    auto ordinals = reinterpret_cast<uint16_t*>(nt8 + *reinterpret_cast<uint32_t*>(exp + 0x24));
+    auto funcs = reinterpret_cast<uint32_t*>(nt8 + *reinterpret_cast<uint32_t*>(exp + 0x1C));
     auto n_names = *reinterpret_cast<uint32_t*>(exp + 0x18);
 
     NtQIP_t NtQIP = nullptr;
@@ -1073,19 +1126,34 @@ inline bool registry_or_dmi_vm_vendor() noexcept {
     };
     auto contains_vm_token = [](char const* s) -> bool {
         if (!s) return false;
-        static constexpr const char* patterns[] = {
-            "VMware", "VirtualBox", "QEMU", "KVM", "Xen", "innotek"
+        // Strong hits — a single match of these names is sufficient
+        // evidence the host is virtual. Order matters: we check the
+        // strong list first so a real VM is detected immediately
+        // without dragging in the weak check.
+        static constexpr const char* strong[] = {
+            "VMware", "VirtualBox", "QEMU", "innotek", "Xen", "Hyper-V"
         };
-        for (auto p : patterns) {
-            for (char const* q = s; *q && *q != '\n'; ++q) {
+        // Weak hits — these strings appear on legitimate Microsoft
+        // systems too. They are treated as evidence only if the
+        // SystemManufacturer entry mentions a VM vendor.
+        static constexpr const char* weak[] = {
+            "Microsoft Corporation"  // used to suggest Hyper-V, but
+                                    // legitimate Microsoft systems have
+                                    // this string everywhere
+        };
+        auto contains = [](char const* s, const char* p) -> bool {
+            for (char const* q = s; *q; ++q) {
                 if ((*q | 32) == p[0]) {
                     char const* r = q + 1;
                     char const* s2 = p + 1;
-                    while (*r && *r != '\n' && *s2 && (*r | 32) == *s2) { ++r; ++s2; }
+                    while (*r && *s2 && (*r | 32) == *s2) { ++r; ++s2; }
                     if (!*s2) return true;
                 }
             }
-        }
+            return false;
+        };
+        for (auto p : strong) if (contains(s, p)) return true;
+        for (auto p : weak)   if (contains(s, p)) return false;  // ignore on its own
         return false;
     };
     char buf[256] = {};
@@ -1291,7 +1359,13 @@ inline void* get_proc_by_hash(void* base, uint64_t hash) noexcept {
     auto funcs = reinterpret_cast<uint32_t*>(static_cast<char*>(base) + exp->AddressOfFunctions);
     for (uint32_t i = 0; i < exp->NumberOfNames; ++i) {
         const char* n = reinterpret_cast<const char*>(base) + names[i];
-        uint64_t h = hashes::fnv(n, std::strlen(n));
+        // Bounded read of up to 256 bytes (DOS module names are
+        // typically <64 bytes). Without a bound, a malformed PE
+        // exposing a non-NUL-terminated name would feed std::strlen
+        // into OOB RAM. Cap is conservative.
+        std::size_t bounded_len = 0;
+        while (bounded_len < 256 && n[bounded_len] != '\0') ++bounded_len;
+        uint64_t h = hashes::fnv(n, bounded_len);
         if (h == hash) {
             uint32_t f_rva = funcs[ordinals[i]];
             if (!rva_in_image(base, f_rva)) return nullptr;
@@ -1466,10 +1540,13 @@ inline hook_info compare_iat_thunk(const char* module_name, const char* func_nam
 
     auto dos = reinterpret_cast<uint8_t*>(mod);
     auto pe = reinterpret_cast<uint8_t*>(mod) + *reinterpret_cast<uint32_t*>(dos + 0x3C);
+    // OptionalHeader.DataDirectory[1] offset relative to NT signature:
+    // PE32+: 0x88 (Magic=0x20b). PE32: 0x78 (Magic=0x10b).
+    uint16_t magic = *reinterpret_cast<uint16_t*>(pe + 0x18);
+    std::size_t dd_offset = (magic == 0x20b) ? 0x88 : 0x78;
     auto opt = pe + 0x18 + *(reinterpret_cast<uint16_t*>(pe + 0x14));
-    auto import_dir = opt + 0x78;
+    auto import_dir = opt + dd_offset;
     auto importRva = *reinterpret_cast<uint32_t*>(import_dir + 0x10);
-    auto importSize = *reinterpret_cast<uint32_t*>(import_dir + 0x14);
     if (!importRva) return info;
 
     auto importDesc = reinterpret_cast<uint8_t*>(mod) + importRva;
@@ -1481,21 +1558,30 @@ inline hook_info compare_iat_thunk(const char* module_name, const char* func_nam
 
         auto dllName = reinterpret_cast<const char*>(mod) + name_rva;
         auto thunk = reinterpret_cast<uintptr_t*>(reinterpret_cast<uint8_t*>(mod) + firstThunk);
-        uintptr_t orig = *(uintptr_t*)thunk;
 
-        auto exp = reinterpret_cast<uint8_t*>(mod) + *reinterpret_cast<uint32_t*>(opt + 0x18 + 0x78);
-        (void)exp;
+        // The previous implementation compared the IAT entry to itself,
+        // producing a permanent false-negative. The correct detection
+        // compares the IAT runtime value (firstThunk[i]) with the
+        // INT snapshot value (origFirstThunk[i]); the INT was written
+        // at load time and stays frozen. If they differ, something
+        // patched the IAT post-load.
+        auto orig = origFirstThunk
+            ? reinterpret_cast<uintptr_t*>(reinterpret_cast<uint8_t*>(mod) + origFirstThunk)
+            : thunk;
 
-        if (orig != 0) {
-            auto hintNameRva = *reinterpret_cast<uint32_t*>(orig);
+        if (orig != nullptr) {
+            auto hintNameRva = *reinterpret_cast<uint32_t*>(reinterpret_cast<uintptr_t>(orig));
             auto fname = reinterpret_cast<const char*>(mod) + hintNameRva + 2;
             if (std::strcmp(fname, func_name) == 0) {
-                info.expected = reinterpret_cast<void*>(*thunk);
-                info.actual = *thunk ? reinterpret_cast<void*>(*thunk) : nullptr;
-                if (info.actual && info.expected) {
-                    info.deviation = reinterpret_cast<uintptr_t>(info.actual) - reinterpret_cast<uintptr_t>(info.expected);
-                    info.hooked = (info.deviation != 0);
-                }
+                uintptr_t iat_value = *thunk;
+                uintptr_t int_value = *orig;
+                info.expected = reinterpret_cast<void*>(int_value);
+                info.actual   = reinterpret_cast<void*>(iat_value);
+                info.deviation = static_cast<uintptr_t>(
+                    iat_value >= int_value
+                        ? iat_value - int_value
+                        : int_value - iat_value);
+                info.hooked = (iat_value != int_value);
                 return info;
             }
         }
@@ -1545,6 +1631,11 @@ inline bool is_eat_forwarded(const char* module_name, const char* func_name) noe
                 if (s[k] == 0) break;
                 if (s[k] == '.' && k > 0) return true;
             }
+            return false;
+        }
+    }
+    return false;
+}
             return false;
         }
     }

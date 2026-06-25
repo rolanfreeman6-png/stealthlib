@@ -160,15 +160,15 @@ template<size_t N, size_t Idx>
 struct encrypted_string_impl {
     char encrypted[N]{};
     char buffer[N + 1]{};
-    bool decrypted = false;
+    bool decrypted;
 
-    // Constexpr array-reference ctor ONLY. Passing the literal by
-    // `const char (&)[M]` (not by `const char*`) is what lets GCC and MSVC
-    // elide the runtime string from .rodata after constexpr-fold of the
-    // initialization of `encrypted[]`. See tests/binary_scan_target.cpp
-    // and the documented Phase 1 validation in PROJECT_PLAN.md.
+    // Constexpr array-reference ctor ONLY. `decrypted(false)` in the
+    // mem-initializer list is required for -Wuninit tracking: gcc-15 cannot
+    // see through in-class `bool = false` initializers when the struct is
+    // constructed via aggregate-init in anonymous-temporary contexts.
     template<size_t M>
-    constexpr encrypted_string_impl(const char (&src)[M]) noexcept {
+    constexpr encrypted_string_impl(const char (&src)[M]) noexcept
+        : decrypted(false) {
         static_assert(M == N + 1, "StealthLib: literal length mismatch");
         for (size_t i = 0; i < N; ++i) {
             encrypted[i] = static_cast<char>(static_cast<uint8_t>(src[i]) ^ derive_byte(Idx, i % 8, mix(0xAAAA)));
@@ -193,9 +193,13 @@ struct encrypted_string_impl {
                 ch ^= derive_byte(Idx, i % 8, mix(0xAAAA));
                 encrypted[i] = static_cast<char>(ch);
             }
+            // Volatile write so the compiler cannot elide the zero-init
+            // and leave plaintext sitting in `buffer` between unlock()
+            // and the next c_str() call. reinterpret_cast is well-defined
+            // here because the source/destination types are compatible
+            // (volatile char* is just char* with volatile-qualifier).
             for (size_t i = 0; i < N + 1; ++i) {
-                volatile char* p = const_cast<volatile char*>(buffer);
-                p[i] = 0;
+                reinterpret_cast<volatile char*>(&buffer[i])[0] = 0;
             }
             decrypted = false;
         }
@@ -206,10 +210,11 @@ template<size_t N, size_t Idx>
 struct encrypted_wstring_impl {
     wchar_t encrypted[N]{};
     wchar_t buffer[N + 1]{};
-    bool decrypted = false;
+    bool decrypted;
 
     template<size_t M>
-    constexpr encrypted_wstring_impl(const wchar_t (&src)[M]) noexcept {
+    constexpr encrypted_wstring_impl(const wchar_t (&src)[M]) noexcept
+        : decrypted(false) {
         static_assert(M == N + 1, "StealthLib: literal length mismatch");
         for (size_t i = 0; i < N; ++i) {
             uint32_t ch = static_cast<uint32_t>(src[i]);
@@ -239,8 +244,7 @@ struct encrypted_wstring_impl {
                 encrypted[i] = static_cast<wchar_t>(ch);
             }
             for (size_t i = 0; i < N + 1; ++i) {
-                volatile wchar_t* p = const_cast<volatile wchar_t*>(buffer);
-                p[i] = 0;
+                reinterpret_cast<volatile wchar_t*>(&buffer[i])[0] = 0;
             }
             decrypted = false;
         }
@@ -353,6 +357,20 @@ struct stealth_encrypted_char {
     }
 };
 
+// Specialisation for empty literal `S("")`: encrypting an empty string
+// would require zero-size arrays (ill-formed in standard C++). The
+// helper below returns a pointer to a static empty string instead.
+template<size_t Idx>
+struct stealth_encrypted_char<0, Idx> {
+    constexpr stealth_encrypted_char(const char (&)[1]) noexcept {}
+    const char* c_str() noexcept { return ""; }
+    constexpr size_t size() const noexcept { return 0; }
+    operator const char*() noexcept { return ""; }
+    detail::unlocked_string_guard unlock() noexcept {
+        return detail::unlocked_string_guard("", 0, nullptr);
+    }
+};
+
 template<size_t N, size_t Idx>
 struct stealth_encrypted_wchar {
     detail::encrypted_wstring_impl<N, Idx> impl;
@@ -369,6 +387,18 @@ struct stealth_encrypted_wchar {
     detail::unlocked_wstring_guard unlock() noexcept {
         const wchar_t* p = impl.decrypt();
         return detail::unlocked_wstring_guard(p, N, &impl);
+    }
+};
+
+// Empty-literal specialisation for SW as well.
+template<size_t Idx>
+struct stealth_encrypted_wchar<0, Idx> {
+    constexpr stealth_encrypted_wchar(const wchar_t (&)[1]) noexcept {}
+    const wchar_t* c_str() noexcept { return L""; }
+    constexpr size_t size() const noexcept { return 0; }
+    operator const wchar_t*() noexcept { return L""; }
+    detail::unlocked_wstring_guard unlock() noexcept {
+        return detail::unlocked_wstring_guard(L"", 0, nullptr);
     }
 };
 

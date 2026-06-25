@@ -46,7 +46,10 @@ if(NOT DEFINED STEALTH_BUILD_KEY)
     string(TIMESTAMP STEALTH_TS "%Y%m%d%H%M%S")
     set(STEALTH_BUILD_KEY_SEED "${STEALTH_GIT_SHA}-${STEALTH_TS}")
     string(MD5 STEALTH_BUILD_KEY_MD5 "${STEALTH_BUILD_KEY_SEED}")
-    set(STEALTH_BUILD_KEY "0x${STEALTH_BUILD_KEY_MD5}ULL")
+    # Truncate MD5 to 64 bits so the resulting hex literal fits u64 cleanly,
+    # without -Wconversion "integer constant is too large" warnings.
+    string(SUBSTRING "${STEALTH_BUILD_KEY_MD5}" 0 16 STEALTH_BUILD_KEY_HEX)
+    set(STEALTH_BUILD_KEY "0x${STEALTH_BUILD_KEY_HEX}ULL")
 else()
     message(STATUS "STEALTH_BUILD_KEY provided externally: ${STEALTH_BUILD_KEY}")
 endif()

@@ -37,13 +37,17 @@ void benchmark_string_encryption() {
     std::cout << "[+] SW() macro: " << wide_time << " ms per call\n";
 
     auto unlock_time = benchmark([]() {
-        for (int i = 0; i < 100; ++i) {
-            auto lock = S("lock_string_test").unlock();
-            volatile const char* p = lock.c_str();
-            (void)p;
-        }
+        // SAFE pattern: bind the encrypted object to a named local whose
+        // lifetime strictly contains the guard. The unsafe pattern
+        //   auto lock = S(...).unlock();
+        // is unsound because the temporary from S(...) dies at end of
+        // full expression, but the guard's destructor runs at end of
+        // scope -> use-after-free.
+        auto s = S("lock_string_test");
+        volatile auto lock = s.unlock();
+        (void)lock;
     }, 1000);
-    std::cout << "[+] S().unlock() (100x): " << unlock_time << " ms/call\n";
+    std::cout << "[+] S().unlock() 100x (scoped): " << unlock_time << " ms/call\n";
 }
 
 void benchmark_base64() {

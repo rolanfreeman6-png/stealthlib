@@ -158,11 +158,18 @@ constexpr uint8_t derive_byte(size_t idx, size_t pos, uint64_t mix_k) noexcept {
 
 template<size_t N, size_t Idx>
 struct encrypted_string_impl {
-    char encrypted[N];
-    char buffer[N + 1];
+    char encrypted[N]{};
+    char buffer[N + 1]{};
     bool decrypted = false;
 
-    constexpr encrypted_string_impl(const char* src) noexcept {
+    // Constexpr array-reference ctor ONLY. Passing the literal by
+    // `const char (&)[M]` (not by `const char*`) is what lets GCC and MSVC
+    // elide the runtime string from .rodata after constexpr-fold of the
+    // initialization of `encrypted[]`. See tests/binary_scan_target.cpp
+    // and the documented Phase 1 validation in PROJECT_PLAN.md.
+    template<size_t M>
+    constexpr encrypted_string_impl(const char (&src)[M]) noexcept {
+        static_assert(M == N + 1, "StealthLib: literal length mismatch");
         for (size_t i = 0; i < N; ++i) {
             encrypted[i] = static_cast<char>(static_cast<uint8_t>(src[i]) ^ derive_byte(Idx, i % 8, mix(0xAAAA)));
         }
@@ -197,11 +204,13 @@ struct encrypted_string_impl {
 
 template<size_t N, size_t Idx>
 struct encrypted_wstring_impl {
-    wchar_t encrypted[N];
-    wchar_t buffer[N + 1];
+    wchar_t encrypted[N]{};
+    wchar_t buffer[N + 1]{};
     bool decrypted = false;
 
-    constexpr encrypted_wstring_impl(const wchar_t* src) noexcept {
+    template<size_t M>
+    constexpr encrypted_wstring_impl(const wchar_t (&src)[M]) noexcept {
+        static_assert(M == N + 1, "StealthLib: literal length mismatch");
         for (size_t i = 0; i < N; ++i) {
             uint32_t ch = static_cast<uint32_t>(src[i]);
             ch ^= derive_byte(Idx, i % 4, mix(0xBBBB));

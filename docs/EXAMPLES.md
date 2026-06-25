@@ -1,58 +1,94 @@
-# Examples
+# Examples (v2.0)
 
-This directory contains Windows example programs demonstrating StealthLib features.
+Each example compiles standalone against the header-only library.
 
 ## minimal_test.cpp
 
-Basic functionality test:
-- String encryption
-- Base64/Hex encoding
-- PEB walking
-- Module loading
-- Secure memory operations
+The simplest end-to-end smoke test:
+
+- String encryption (`S("...")`)
+- Base64 / Hex encoding
+- PEB walking + `get_function`
+- Module loader
+- Secure memory and constant-time compare
+
+Build & run:
+
+```cmd
+minimal_test.exe
+```
 
 ## full_demo.cpp
 
-Complete demonstration of all features:
-- Compile-time string encryption
-- PEB walking for API resolution
-- XOR/Base64/Hex encoding
-- Debugger detection
-- Secure memory operations
-- `stealth_api` template
-- Module loader class
+A long walkthrough of every feature with a section header for each.
+Useful as a documentation reference for users learning the API.
 
 ## game_protection.cpp
 
-Game development use case:
-- Protect game server IP
-- Protect mod API keys
-- Protect database passwords
-- Dynamic API resolution
-- Debugger detection
+Game-server use case:
+
+- API keys
+- Database passwords
+- Mod integration secrets
 
 ## server_protection.cpp
 
-Server software use case:
-- Protect DB credentials
-- Protect JWT secrets
-- Protect AWS keys
-- Protect encryption keys
-- Dynamic API resolution
+Server-side use case:
 
-## Building Examples
+- DB connection strings
+- JWT secrets
+- AWS access / secret keys
+- SMTP credentials
 
-```bash
-mkdir build && cd build
-cmake .. -DSTEALTH_BUILD_EXAMPLES=ON
-cmake --build .
+## hash_resolution.cpp (v2.0 — killer feature)
+
+Demonstrates hash-based API resolution. Module and function names are
+folded into 64-bit FNV-1a constants at compile time; only the hashes
+appear in the compiled binary.
+
+```text
+[+] StealthLib v2.0.0: hash-based API resolution demo
+[*] module hash(user32.dll)   = 0xcbf29ce484222325 + int
+[*] func   hash(MessageBoxW)  = ...
+[+] MessageBoxW resolved by hash at <ptr>
+[+] GetTickCount64 resolved by hash: uptime=<ms>ms
+[+] Anti-debug signals scan
+[+] RAII unlock demo
 ```
 
-## Running On Windows
+A static reverse engineer running `strings examples/hash_resolution.exe`
+will not find `"user32.dll"`, `"kernel32.dll"`, `"MessageBoxW"`,
+`"GetTickCount64"` or `"GetComputerNameW"` anywhere in the binary.
+
+## unlock_demo.cpp (v2.0)
+
+Demonstrates RAII narrow window:
+
+```text
+[+] StealthLib unlock demo v2.0.0
+[*] 'api' identity: <plaintext>
+[*] locked within scope: <plaintext>
+[+] scope exited -> ciphertext restored
+[+] still decryptable after re-encryption
+```
+
+After the inner block, the plaintext is no longer recoverable from
+heap dumps: the encryption byte stream plus an empty plaintext buffer
+are all that remains; on the next `c_str()` call, the string is
+decrypted fresh from the encrypted form.
+
+## Building all examples
 
 ```bash
-./examples/Release/minimal_test.exe
-./examples/Release/full_demo.exe
-./examples/Release/game_protection.exe
-./examples/Release/server_protection.exe
+cmake -S . -B build -DSTEALTH_BUILD_EXAMPLES=ON
+cmake --build build --parallel
+./build/examples/minimal_test
+./build/examples/full_demo
+./build/examples/game_protection
+./build/examples/server_protection
+./build/examples/hash_resolution
+./build/examples/unlock_demo
 ```
+
+On Windows MSVC the binaries live under
+`build/examples/Release/`; on Linux under `build/examples/`.

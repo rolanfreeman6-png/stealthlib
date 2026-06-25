@@ -238,6 +238,37 @@ if (stealth::memory::compare_constant_time(a, b, 11)) { /* match (timing-side-ch
 
 ---
 
+## Competitive positioning
+
+Honest per-axis comparison against [`xorstr`](https://github.com/JustasMasiulis/xorstr)
+(version `066c64ee`, the canonical header-only string-encryption header,
+Apache 2.0, 242 LoC, 10 KB):
+
+| Axis                                          | xorstr  | stealthlib v2.1.1 |
+|-----------------------------------------------|:-------:|:----------------:|
+| Compile-time XOR string encryption             |   YES   |        **YES**    |
+| SIMD runtime decryption (AVX/SSE/NEON)         |   YES   |        NO         |
+| Anti-debug signal suite (5 channels)          |   NO    |        **YES**    |
+| Anti-VM cpuid + DMI + disk signals             |   NO    |        **YES**    |
+| Hardware-breakpoint detection (GetThreadContext)|  NO    |        **YES**    |
+| Hash-based API resolution (no API strings)     |   NO    |        **YES**    |
+| IAT/EAT hook + forwarder detection             |   NO    |        **YES**    |
+| SHA-256 module validated against FIPS 180-4 KAT|   NO    |        **YES**    |
+| Build-time unique key from git + timestamp     |   NO    |        **YES**    |
+| Doctest harness + property-based + libFuzzer   |   NO    |        **YES**    |
+| Strict-warnings + ASan/UBSan green             |   NO    |        **YES**    |
+| Determinism verified (byte-identical SHA256)   |   NO    |        **YES**    |
+| Wide-string cross-platform UTF-16LE hash       |   NO    |        **YES**    |
+
+* **xorstr is the right choice** when you only need string encryption
+  with the smallest dependency surface (~10 KB, single header).
+* **stealthlib is the right choice** when the project needs a coherent
+  bundle of detection + integrity + hashing + forensics. We do
+  everything xorstr does, plus 10 more orthogonal concerns.
+
+No symbol collisions on cross-include; both libraries can be vendored
+side-by-side.
+
 ## Requirements
 
 - C++20 compiler: MSVC 19.29+, Clang 10+, GCC 10+

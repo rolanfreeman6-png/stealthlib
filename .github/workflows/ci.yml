@@ -116,6 +116,50 @@ jobs:
       - name: Run tests
         run: cd build && ctest --output-on-failure
 
+  linux-strict-warnings:
+    name: Linux Strict Warnings (-Werror -Wconversion -Wshadow)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: sudo apt-get update && sudo apt-get install -y g++-13 cmake
+      - name: Configure CMake
+        run: |
+          mkdir build
+          cmake -S . -B build \
+            -DCMAKE_CXX_COMPILER=g++-13 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSTEALTH_BUILD_EXAMPLES=OFF \
+            -DSTEALTH_BUILD_TESTS=ON \
+            -DSTEALTH_BUILD_BENCHMARK=OFF \
+            -DSTEALTH_BUILD_FIXTURES=OFF \
+            -DCMAKE_CXX_FLAGS="-Werror -Wshadow -Wconversion -Wsign-conversion -Wnon-virtual-dtor"
+      - name: Build (warnings treated as errors)
+        run: cmake --build build --parallel
+
+  linux-tsan:
+    name: Linux TSan (ThreadSanitizer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: sudo apt-get update && sudo apt-get install -y clang cmake
+      - name: Configure CMake (TSan Debug)
+        run: |
+          mkdir build
+          cmake -S . -B build \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-fsanitize=thread -g -O1" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
+            -DSTEALTH_BUILD_EXAMPLES=OFF \
+            -DSTEALTH_BUILD_TESTS=ON \
+            -DSTEALTH_BUILD_FIXTURES=OFF
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Run TSan race test
+        run: cd build && ./tests/test_concurrent_decrypt
+
   linux-sanitizers:
     name: Linux Sanitizers (ASan + UBSan)
     runs-on: ubuntu-latest

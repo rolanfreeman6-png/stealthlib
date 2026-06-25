@@ -98,8 +98,9 @@ function(add_stealth_doctest_test name source)
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         LABELS "v2;doctest"
     )
-    add_dependencies(${name} stealth_pe_fixtures)
-    add_custom_command(TARGET ${name} POST_BUILD
+    if(STEALTH_BUILD_FIXTURES AND TARGET stealth_pe_fixtures)
+        add_dependencies(${name} stealth_pe_fixtures)
+        add_custom_command(TARGET ${name} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
             $<TARGET_FILE_DIR:${name}>/fixtures
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -109,6 +110,7 @@ function(add_stealth_doctest_test name source)
             $<TARGET_FILE_DIR:${name}>/fixtures/
         VERBATIM
     )
+    endif()
 endfunction()
 
 add_stealth_doctest_test(doctest_string_test    test_strings.cpp)
@@ -117,6 +119,26 @@ add_stealth_doctest_test(doctest_integrity_test test_integrity.cpp)
 add_stealth_doctest_test(doctest_hashes_test    test_hashes.cpp)
 add_stealth_doctest_test(doctest_sha256_test    test_sha256.cpp)
 add_stealth_doctest_test(doctest_hwbp_test      test_hwbp.cpp)
+
+# Tier 1C: thread-safety harness for encrypted_string{}. Only meaningful on
+# Linux + pthreads. Built unconditionally so a TSan-stripped ctest still
+# builds/runs the test; users opt into TSan via CMAKE_CXX_FLAGS.
+add_stealth_test(test_concurrent_decrypt    test_concurrent_decrypt.cpp)
+
+# --- Tier 2D: RTE scenarios ----------------------------------------------
+# Three real-world endurance tests covering the key compositions --
+#   1. libc-walk   : loader-style + tight toggle loops (correctness)
+#   2. signal-sweep: long-running server + repeated detection::scan()
+#   3. stress      : 50000-cycle churn over a 17-literal lexicon
+# Each is platform-neutral so they run on Linux GCC + Windows MSVC.
+add_stealth_test(scenario_rte_libc_walk    scenario_rte_libc_walk.cpp)
+add_stealth_test(scenario_rte_signal_sweep scenario_rte_signal_sweep.cpp)
+add_stealth_test(scenario_rte_stress       scenario_rte_stress.cpp)
+
+# Tier 2E: SSE2 fast-path parity check. Verifies that the
+# _mm_xor_si128 fast path produces byte-identical output to the scalar
+# fallback for a long literal (N=80, well above the 32-byte threshold).
+add_stealth_test(test_sse2_parity           test_sse2_parity.cpp)
 
 # --- Fuzz harness ---------------------------------------------------
 # Build with -DSTEALTH_BUILD_FUZZER=ON (typically under clang because

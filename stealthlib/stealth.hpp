@@ -22,6 +22,10 @@
 #include <vector>
 #include <type_traits>
 
+#if defined(__SSE2__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(_M_X64)
+#include <emmintrin.h>
+#endif
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -194,12 +198,18 @@ template<size_t N, size_t Idx>
 struct encrypted_string_impl {
     char encrypted[N]{};
     char buffer[N + 1]{};
-    bool decrypted;
+    // `decrypted` is accessed via GCC/Clang __atomic_* builtins below so
+    // that concurrent decrypt()/reencrypt() calls (e.g. the same literal
+    // evaluated by two threads simultaneously) do not race on the flag in
+    // a TSan-visible way. std::atomic<bool> would also work, but it makes
+    // the struct non-literal in C++20, which kills the constexpr ctor --
+    // and the constexpr ctor is what eliminates the plaintext from .rodata
+    // (verified by tests/binary_scan.cmake). The __atomic_* builtins are
+    // emitted by the compiler as acquire/release-fenced operations and are
+    // seen by TSan as proper synchronization without changing the layout.
+    bool decrypted{false};
 
-    // Constexpr array-reference ctor ONLY. `decrypted(false)` in the
-    // mem-initializer list is required for -Wuninit tracking: gcc-15 cannot
-    // see through in-class `bool = false` initializers when the struct is
-    // constructed via aggregate-init in anonymous-temporary contexts.
+    // Constexpr array-reference ctor ONLY.
     template<size_t M>
     constexpr encrypted_string_impl(const char (&src)[M]) noexcept
         : decrypted(false) {
@@ -223,7 +233,65 @@ struct encrypted_string_impl {
     }
 
     const char* decrypt() noexcept {
-        if (!decrypted) {
+        // __ATOMIC_ACQUIRE pairs with the __ATOMIC_RELEASE below. TSan sees
+        // this as proper synchronization; on x86_64 both orderings compile
+        // down to plain mov (x86 TSO), with the fence only if needed.
+        if (!__atomic_load_n(&decrypted, __ATOMIC_ACQUIRE)) {
+#if STEALTHLIB_SSE2_DECRYPT && (defined(__SSE2__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(_M_X64))
+            // SSE2 fast path. The 16-byte keystream repeats every 16 bytes
+            // (because `(i & 0x0F)` and `derive_byte(Idx, i % 8, ...)` only
+            // depend on position), so we precompute it once and XOR every
+            // 16-byte block with a single instruction. Threshold of 32 bytes
+            // ensures we amortise the SSE setup (load XOR keystream, store)
+            // across at least two full blocks.
+            if constexpr (N >= 32) {
+                constexpr uint8_t mask_table[16] = {
+                    0xA5,0xB6,0xC7,0xD8, 0xE9,0xFA,0x0B,0x1C,
+                    0x2D,0x3E,0x4F,0x50, 0x61,0x72,0x83,0x94
+                };
+                constexpr uint8_t var_mask = mask_table[STEALTH_BUILD_KEY % 16];
+                constexpr uint8_t ks[16] = {
+                    static_cast<uint8_t>(var_mask + 0)  ^ derive_byte(Idx, 0, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 1)  ^ derive_byte(Idx, 1, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 2)  ^ derive_byte(Idx, 2, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 3)  ^ derive_byte(Idx, 3, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 4)  ^ derive_byte(Idx, 4, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 5)  ^ derive_byte(Idx, 5, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 6)  ^ derive_byte(Idx, 6, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 7)  ^ derive_byte(Idx, 7, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 8)  ^ derive_byte(Idx, 0, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 9)  ^ derive_byte(Idx, 1, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 10) ^ derive_byte(Idx, 2, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 11) ^ derive_byte(Idx, 3, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 12) ^ derive_byte(Idx, 4, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 13) ^ derive_byte(Idx, 5, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 14) ^ derive_byte(Idx, 6, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 15) ^ derive_byte(Idx, 7, mix(0xAAAA)),
+                };
+                const __m128i k = _mm_loadu_si128(reinterpret_cast<const __m128i*>(ks));
+                size_t i = 0;
+                for (; i + 16 <= N; i += 16) {
+                    __m128i v  = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&encrypted[i]));
+                    __m128i r  = _mm_xor_si128(v, k);
+                    _mm_storeu_si128(reinterpret_cast<__m128i*>(&buffer[i]), r);
+                }
+                // Scalar tail for the remaining bytes (always < 16).
+                constexpr uint8_t mask_table_t[16] = {
+                    0xA5,0xB6,0xC7,0xD8, 0xE9,0xFA,0x0B,0x1C,
+                    0x2D,0x3E,0x4F,0x50, 0x61,0x72,0x83,0x94
+                };
+                constexpr uint8_t var_mask_t = mask_table_t[STEALTH_BUILD_KEY % 16];
+                for (; i < N; ++i) {
+                    uint8_t b = static_cast<uint8_t>(encrypted[i])
+                              ^ static_cast<uint8_t>(var_mask_t + (i & 0x0F));
+                    b ^= derive_byte(Idx, i % 8, mix(0xAAAA));
+                    buffer[i] = static_cast<char>(b);
+                }
+                buffer[N] = '\0';
+                __atomic_store_n(&decrypted, true, __ATOMIC_RELEASE);
+                return buffer;
+            }
+#endif // STEALTHLIB_SSE2_DECRYPT
             constexpr uint8_t mask_table[16] = {
                 0xA5,0xB6,0xC7,0xD8, 0xE9,0xFA,0x0B,0x1C,
                 0x2D,0x3E,0x4F,0x50, 0x61,0x72,0x83,0x94
@@ -236,7 +304,7 @@ struct encrypted_string_impl {
                 buffer[i] = static_cast<char>(b);
             }
             buffer[N] = '\0';
-            decrypted = true;
+            __atomic_store_n(&decrypted, true, __ATOMIC_RELEASE);
         }
         return buffer;
     }
@@ -247,7 +315,60 @@ struct encrypted_string_impl {
 #endif
 
     void reencrypt() noexcept {
-        if (decrypted) {
+        if (__atomic_load_n(&decrypted, __ATOMIC_ACQUIRE)) {
+#if STEALTHLIB_SSE2_DECRYPT && (defined(__SSE2__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(_M_X64))
+            // SSE2 fast path mirrors decrypt() above: same keystream, but
+            // the operation is its own inverse (XOR c ^= k twice = identity),
+            // so we reuse the keystream as-is.
+            if constexpr (N >= 32) {
+                constexpr uint8_t mask_table[16] = {
+                    0xA5,0xB6,0xC7,0xD8, 0xE9,0xFA,0x0B,0x1C,
+                    0x2D,0x3E,0x4F,0x50, 0x61,0x72,0x83,0x94
+                };
+                constexpr uint8_t var_mask = mask_table[STEALTH_BUILD_KEY % 16];
+                constexpr uint8_t ks[16] = {
+                    static_cast<uint8_t>(var_mask + 0)  ^ derive_byte(Idx, 0, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 1)  ^ derive_byte(Idx, 1, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 2)  ^ derive_byte(Idx, 2, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 3)  ^ derive_byte(Idx, 3, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 4)  ^ derive_byte(Idx, 4, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 5)  ^ derive_byte(Idx, 5, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 6)  ^ derive_byte(Idx, 6, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 7)  ^ derive_byte(Idx, 7, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 8)  ^ derive_byte(Idx, 0, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 9)  ^ derive_byte(Idx, 1, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 10) ^ derive_byte(Idx, 2, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 11) ^ derive_byte(Idx, 3, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 12) ^ derive_byte(Idx, 4, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 13) ^ derive_byte(Idx, 5, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 14) ^ derive_byte(Idx, 6, mix(0xAAAA)),
+                    static_cast<uint8_t>(var_mask + 15) ^ derive_byte(Idx, 7, mix(0xAAAA)),
+                };
+                const __m128i k = _mm_loadu_si128(reinterpret_cast<const __m128i*>(ks));
+                size_t i = 0;
+                for (; i + 16 <= N; i += 16) {
+                    __m128i v = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&buffer[i]));
+                    __m128i r = _mm_xor_si128(v, k);
+                    _mm_storeu_si128(reinterpret_cast<__m128i*>(&encrypted[i]), r);
+                }
+                constexpr uint8_t mask_table_t[16] = {
+                    0xA5,0xB6,0xC7,0xD8, 0xE9,0xFA,0x0B,0x1C,
+                    0x2D,0x3E,0x4F,0x50, 0x61,0x72,0x83,0x94
+                };
+                constexpr uint8_t var_mask_t = mask_table_t[STEALTH_BUILD_KEY % 16];
+                for (; i < N; ++i) {
+                    uint8_t ch = static_cast<uint8_t>(buffer[i]);
+                    ch ^= derive_byte(Idx, i % 8, mix(0xAAAA));
+                    ch ^= static_cast<uint8_t>(var_mask_t + (i & 0x0F));
+                    encrypted[i] = static_cast<char>(ch);
+                }
+                for (size_t j = 0; j < N + 1; ++j) {
+                    reinterpret_cast<volatile char*>(&buffer[j])[0] = 0;
+                }
+                __atomic_store_n(&decrypted, false, __ATOMIC_RELEASE);
+                return;
+            }
+#endif // STEALTHLIB_SSE2_DECRYPT
             constexpr uint8_t mask_table[16] = {
                 0xA5,0xB6,0xC7,0xD8, 0xE9,0xFA,0x0B,0x1C,
                 0x2D,0x3E,0x4F,0x50, 0x61,0x72,0x83,0x94
@@ -265,7 +386,7 @@ struct encrypted_string_impl {
             for (size_t i = 0; i < N + 1; ++i) {
                 reinterpret_cast<volatile char*>(&buffer[i])[0] = 0;
             }
-            decrypted = false;
+            __atomic_store_n(&decrypted, false, __ATOMIC_RELEASE);
         }
     }
 
@@ -276,9 +397,13 @@ struct encrypted_string_impl {
 
 template<size_t N, size_t Idx>
 struct encrypted_wstring_impl {
+    // See encrypted_string_impl for the rationale behind the __atomic_*
+    // builtins instead of std::atomic<bool>: this struct must remain a
+    // literal type so that the constexpr ctor can consume the source
+    // literal at translation time, eliminating plaintext from .rodata.
     wchar_t encrypted[N]{};
     wchar_t buffer[N + 1]{};
-    bool decrypted;
+    bool decrypted{false};
 
     template<size_t M>
     constexpr encrypted_wstring_impl(const wchar_t (&src)[M]) noexcept
@@ -299,7 +424,7 @@ struct encrypted_wstring_impl {
     }
 
     const wchar_t* decrypt() noexcept {
-        if (!decrypted) {
+        if (!__atomic_load_n(&decrypted, __ATOMIC_ACQUIRE)) {
             constexpr uint16_t wmask_table[16] = {
                 0xA5A5,0xB6B6,0xC7C7,0xD8D8, 0xE9E9,0xFAFA,0x0B0B,0x1C1C,
                 0x2D2D,0x3E3E,0x4F4F,0x5050, 0x6161,0x7272,0x8383,0x9494
@@ -313,7 +438,7 @@ struct encrypted_wstring_impl {
                 buffer[i] = static_cast<wchar_t>(ch);
             }
             buffer[N] = L'\0';
-            decrypted = true;
+            __atomic_store_n(&decrypted, true, __ATOMIC_RELEASE);
         }
         return buffer;
     }
@@ -329,7 +454,7 @@ struct encrypted_wstring_impl {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdangling-pointer"
 #endif
-        if (decrypted) {
+        if (__atomic_load_n(&decrypted, __ATOMIC_ACQUIRE)) {
             constexpr uint16_t wmask_table[16] = {
                 0xA5A5,0xB6B6,0xC7C7,0xD8D8, 0xE9E9,0xFAFA,0x0B0B,0x1C1C,
                 0x2D2D,0x3E3E,0x4F4F,0x5050, 0x6161,0x7272,0x8383,0x9494
@@ -344,7 +469,7 @@ struct encrypted_wstring_impl {
             for (size_t i = 0; i < N + 1; ++i) {
                 reinterpret_cast<volatile wchar_t*>(&buffer[i])[0] = 0;
             }
-            decrypted = false;
+            __atomic_store_n(&decrypted, false, __ATOMIC_RELEASE);
         }
 #if defined(__GNUC__) && __GNUC__ >= 14
 #pragma GCC diagnostic pop
@@ -366,6 +491,11 @@ public:
               [](void* p) {
                   static_cast<encrypted_string_impl<S, I>*>(p)->reencrypt();
               })) {}
+
+    // Empty-literal specialisation: S("") produces a sentinel guard with no
+    // pool to scrub. We keep `reen_ = nullptr` so the dtor becomes a no-op.
+    unlocked_string_guard(const char* ptr, size_t n, std::nullptr_t) noexcept
+        : ptr_(ptr), n_(n), pool_ptr_(nullptr), reen_(nullptr) {}
 
     ~unlocked_string_guard() {
         if (reen_ && pool_ptr_) {
@@ -570,6 +700,7 @@ struct stealth_encrypted_char<0, Idx> {
     constexpr stealth_encrypted_char(const char (&)[1]) noexcept {}
     const char* c_str() noexcept { return ""; }
     constexpr size_t size() const noexcept { return 0; }
+    const char* operator*() noexcept { return c_str(); }
     operator const char*() noexcept { return ""; }
     detail::unlocked_string_guard unlock() noexcept {
         return detail::unlocked_string_guard("", 0, nullptr);
@@ -805,11 +936,13 @@ inline std::optional<std::string> base64_decode(const std::string_view& str) noe
     size_t len_str = str.size();
     for (size_t i = 0; i < len_str; i += 4) {
         int8_t vals[4] = {-1, -1, -1, -1};
-        for (int j = 0; j < 4; ++j) {
+        for (size_t j = 0; j < 4; ++j) {
             if (s[i + j] != '=') {
                 unsigned char c = static_cast<unsigned char>(s[i + j]);
                 vals[j] = b64_decode[c];
                 if (vals[j] < 0) return std::nullopt;
+            } else {
+                vals[j] = -1;
             }
         }
         if (vals[0] < 0 || vals[1] < 0) return std::nullopt;
@@ -985,7 +1118,7 @@ inline bool check_timing_anomaly() noexcept {
 #if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86)
     uint64_t a = rdtsc();
     volatile uint64_t acc = 0;
-    for (int i = 0; i < 1024; ++i) acc += i * 0xA5A5A5A5ULL;
+    for (uint64_t i = 0; i < 1024; ++i) acc += i * 0xA5A5A5A5ULL;
     (void)acc;
     uint64_t b = rdtsc();
     uint64_t delta = b - a;
@@ -1141,8 +1274,8 @@ inline bool registry_or_dmi_vm_vendor() noexcept {
                                     // legitimate Microsoft systems have
                                     // this string everywhere
         };
-        auto contains = [](char const* s, const char* p) -> bool {
-            for (char const* q = s; *q; ++q) {
+        auto contains = [](char const* haystack, const char* p) -> bool {
+            for (char const* q = haystack; *q; ++q) {
                 if ((*q | 32) == p[0]) {
                     char const* r = q + 1;
                     char const* s2 = p + 1;

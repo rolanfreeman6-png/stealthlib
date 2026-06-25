@@ -17,6 +17,7 @@ option(STEALTH_BUILD_BENCHMARK   "Build benchmark"    ON)
 option(STEALTH_BUILD_FIXTURES    "Generate PE fixtures for tests" ON)
 option(STEALTH_SANITIZERS        "Enable ASan + UBSan (Linux only)" OFF)
 option(STEALTH_CLANG_TIDY        "Run clang-tidy on targets" OFF)
+option(STEALTHLIB_SSE2_DECRYPT   "Enable SSE2 _mm_xor_si128 fast path for strings >= 32 bytes" OFF)
 
 if(STEALTH_SANITIZERS)
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -87,6 +88,18 @@ target_compile_features(stealthlib INTERFACE cxx_std_20)
 target_compile_definitions(stealthlib INTERFACE
     STEALTH_BUILD_KEY=${STEALTH_BUILD_KEY}
 )
+
+if(STEALTHLIB_SSE2_DECRYPT)
+    message(STATUS "SSE2 decrypt fast-path: ENABLED (x86_64 only)")
+    target_compile_definitions(stealthlib INTERFACE
+        STEALTHLIB_SSE2_DECRYPT=1
+    )
+else()
+    message(STATUS "SSE2 decrypt fast-path: disabled (scalar fallback)")
+    target_compile_definitions(stealthlib INTERFACE
+        STEALTHLIB_SSE2_DECRYPT=0
+    )
+endif()
 
 if(MSVC)
     target_compile_options(stealthlib INTERFACE /W4 /Zc:__cplusplus)

@@ -6,6 +6,7 @@ Header-only C++20 Windows hardening utilities — compile-time string obfuscatio
 hash-based API resolution and anti-debug signal suite in one drop-in bundle.
 
 [![CI](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/ci.yml/badge.svg)](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/ci.yml)
+[![Reproducible](https://img.shields.io/badge/reproducible-bash%20tools%2Fquickverify.sh-blueviolet)](tools/quickverify.sh)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---

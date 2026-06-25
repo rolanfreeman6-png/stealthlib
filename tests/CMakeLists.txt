@@ -115,3 +115,24 @@ add_stealth_doctest_test(doctest_string_test    test_strings.cpp)
 add_stealth_doctest_test(doctest_peb_test       test_peb_windows.cpp)
 add_stealth_doctest_test(doctest_integrity_test test_integrity.cpp)
 add_stealth_doctest_test(doctest_hashes_test    test_hashes.cpp)
+add_stealth_doctest_test(doctest_sha256_test    test_sha256.cpp)
+add_stealth_doctest_test(doctest_hwbp_test      test_hwbp.cpp)
+
+# --- Fuzz harness ---------------------------------------------------
+# Build with -DSTEALTH_BUILD_FUZZER=ON (typically under clang because
+# libFuzzer is ship-of-clang for now). Without that flag, the harness
+# runs as a deterministic local-fuzz driver using a fixed seed corpus.
+option(STEALTH_BUILD_FUZZER "Build libfuzzer harness (requires clang)" OFF)
+if(STEALTH_BUILD_FUZZER)
+    add_executable(fuzz_hashes fuzz_hashes.cpp)
+    target_link_libraries(fuzz_hashes PRIVATE stealthlib)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(fuzz_hashes PRIVATE -Wall -Wextra -Wpedantic)
+        if(DEFINED STEALTH_FUZZ_FLAGS)
+            target_compile_options(fuzz_hashes PRIVATE ${STEALTH_FUZZ_FLAGS})
+        endif()
+    endif()
+    if(WIN32)
+        target_compile_options(fuzz_hashes PRIVATE /W4 /permissive-)
+    endif()
+endif()

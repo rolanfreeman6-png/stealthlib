@@ -13,6 +13,9 @@
 #include <cstdlib>
 #include <cstdio>
 #include <string>
+#if !defined(_WIN32)
+#include <sys/statvfs.h>
+#endif
 #include <string_view>
 #include <array>
 #include <optional>
@@ -102,6 +105,13 @@ constexpr uint64_t fnv(const char* s) noexcept {
     return detail::fnv1a_64(s, constexpr_strlen(s));
 }
 
+// Accept uint8_t* (common for binary/IO buffers) by reinterpret. The byte
+// values are identical to const char* values; the alias is well-defined
+// because both point to the same unsigned byte stream.
+inline uint64_t fnv(const uint8_t* s, size_t n) noexcept {
+    return detail::fnv1a_64(reinterpret_cast<const char*>(s), n);
+}
+
 constexpr uint64_t fnv(const wchar_t* s, size_t n) noexcept {
     return detail::fnv1a_wide(s, n);
 }
@@ -128,11 +138,19 @@ inline uint64_t runtime(const char* s) noexcept {
     if (!s) return 0;
     uint64_t h = detail::fnv1a_basis;
     while (*s) {
-        h ^= static_cast<uint64_t>(static_cast<uint8_t>(*s));
+        h ^= static_cast<uint64_t>(static_cast<unsigned char>(*s));
         h *= detail::fnv1a_prime;
         ++s;
     }
     return h;
+}
+
+inline uint64_t runtime(const uint8_t* s) noexcept {
+    return runtime(reinterpret_cast<const char*>(s));
+}
+
+inline uint64_t djb2(const uint8_t* s, size_t n) noexcept {
+    return djb2(reinterpret_cast<const char*>(s), n);
 }
 
 } // namespace hashes
@@ -170,15 +188,36 @@ struct encrypted_string_impl {
     constexpr encrypted_string_impl(const char (&src)[M]) noexcept
         : decrypted(false) {
         static_assert(M == N + 1, "StealthLib: literal length mismatch");
+        // Build-time encryption rotation: pick one of 16 byte-mask
+        // tables per `STEALTH_BUILD_KEY % 16`, then XOR the ciphertext
+        // with the chosen mask. Different builds of the same source
+        // code emit visibly different byte streams for the same
+        // plaintext, which is what binds a binary to its build. The
+        // dispatch happens at compile time; there is no runtime cost.
+        constexpr uint8_t mask_table[16] = {
+            0xA5,0xB6,0xC7,0xD8, 0xE9,0xFA,0x0B,0x1C,
+            0x2D,0x3E,0x4F,0x50, 0x61,0x72,0x83,0x94
+        };
+        constexpr uint8_t var_mask = mask_table[STEALTH_BUILD_KEY % 16];
         for (size_t i = 0; i < N; ++i) {
-            encrypted[i] = static_cast<char>(static_cast<uint8_t>(src[i]) ^ derive_byte(Idx, i % 8, mix(0xAAAA)));
+            uint8_t b = static_cast<uint8_t>(src[i]) ^ derive_byte(Idx, i % 8, mix(0xAAAA));
+            b ^= static_cast<uint8_t>(var_mask + (i & 0x0F));
+            encrypted[i] = static_cast<char>(b);
         }
     }
 
     const char* decrypt() noexcept {
         if (!decrypted) {
+            constexpr uint8_t mask_table[16] = {
+                0xA5,0xB6,0xC7,0xD8, 0xE9,0xFA,0x0B,0x1C,
+                0x2D,0x3E,0x4F,0x50, 0x61,0x72,0x83,0x94
+            };
+            constexpr uint8_t var_mask = mask_table[STEALTH_BUILD_KEY % 16];
             for (size_t i = 0; i < N; ++i) {
-                buffer[i] = static_cast<char>(static_cast<uint8_t>(encrypted[i]) ^ derive_byte(Idx, i % 8, mix(0xAAAA)));
+                uint8_t b = static_cast<uint8_t>(encrypted[i])
+                          ^ static_cast<uint8_t>(var_mask + (i & 0x0F));
+                b ^= derive_byte(Idx, i % 8, mix(0xAAAA));
+                buffer[i] = static_cast<char>(b);
             }
             buffer[N] = '\0';
             decrypted = true;
@@ -186,24 +225,37 @@ struct encrypted_string_impl {
         return buffer;
     }
 
+#if defined(__GNUC__) && __GNUC__ >= 14
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdangling-pointer"
+#endif
+
     void reencrypt() noexcept {
         if (decrypted) {
+            constexpr uint8_t mask_table[16] = {
+                0xA5,0xB6,0xC7,0xD8, 0xE9,0xFA,0x0B,0x1C,
+                0x2D,0x3E,0x4F,0x50, 0x61,0x72,0x83,0x94
+            };
+            constexpr uint8_t var_mask = mask_table[STEALTH_BUILD_KEY % 16];
             for (size_t i = 0; i < N; ++i) {
                 uint8_t ch = static_cast<uint8_t>(buffer[i]);
                 ch ^= derive_byte(Idx, i % 8, mix(0xAAAA));
+                ch ^= static_cast<uint8_t>(var_mask + (i & 0x0F));
                 encrypted[i] = static_cast<char>(ch);
             }
             // Volatile write so the compiler cannot elide the zero-init
             // and leave plaintext sitting in `buffer` between unlock()
-            // and the next c_str() call. reinterpret_cast is well-defined
-            // here because the source/destination types are compatible
-            // (volatile char* is just char* with volatile-qualifier).
+            // and the next c_str() call.
             for (size_t i = 0; i < N + 1; ++i) {
                 reinterpret_cast<volatile char*>(&buffer[i])[0] = 0;
             }
             decrypted = false;
         }
     }
+
+#if defined(__GNUC__) && __GNUC__ >= 14
+#pragma GCC diagnostic pop
+#endif
 };
 
 template<size_t N, size_t Idx>
@@ -216,17 +268,31 @@ struct encrypted_wstring_impl {
     constexpr encrypted_wstring_impl(const wchar_t (&src)[M]) noexcept
         : decrypted(false) {
         static_assert(M == N + 1, "StealthLib: literal length mismatch");
+        constexpr uint16_t wmask_table[16] = {
+            0xA5A5,0xB6B6,0xC7C7,0xD8D8, 0xE9E9,0xFAFA,0x0B0B,0x1C1C,
+            0x2D2D,0x3E3E,0x4F4F,0x5050, 0x6161,0x7272,0x8383,0x9494
+        };
+        constexpr uint16_t var_mask = wmask_table[STEALTH_BUILD_KEY % 16];
         for (size_t i = 0; i < N; ++i) {
             uint32_t ch = static_cast<uint32_t>(src[i]);
-            ch ^= derive_byte(Idx, i % 4, mix(0xBBBB));
+            uint32_t k  = derive_byte(Idx, i % 4, mix(0xBBBB));
+            uint32_t km = static_cast<uint32_t>(var_mask) + (i & 0x0F);
+            ch ^= k ^ km;
             encrypted[i] = static_cast<wchar_t>(ch);
         }
     }
 
     const wchar_t* decrypt() noexcept {
         if (!decrypted) {
+            constexpr uint16_t wmask_table[16] = {
+                0xA5A5,0xB6B6,0xC7C7,0xD8D8, 0xE9E9,0xFAFA,0x0B0B,0x1C1C,
+                0x2D2D,0x3E3E,0x4F4F,0x5050, 0x6161,0x7272,0x8383,0x9494
+            };
+            constexpr uint16_t var_mask = wmask_table[STEALTH_BUILD_KEY % 16];
             for (size_t i = 0; i < N; ++i) {
                 uint32_t ch = static_cast<uint32_t>(encrypted[i]);
+                uint32_t km = static_cast<uint32_t>(var_mask) + (i & 0x0F);
+                ch ^= km;
                 ch ^= derive_byte(Idx, i % 4, mix(0xBBBB));
                 buffer[i] = static_cast<wchar_t>(ch);
             }
@@ -237,10 +303,26 @@ struct encrypted_wstring_impl {
     }
 
     void reencrypt() noexcept {
+        // GCC's -Wdangling-pointer flags the *call site* of reencrypt()
+        // when invoked on the address of a named local or temporary that
+        // might have a short lifetime, even though we always invoke with
+        // a stored pointer that outlives the call. The pattern is sound
+        // because the unlock() returned guard holds `&impl` for the
+        // lifetime of the named local. Suppress locally.
+#if defined(__GNUC__) && __GNUC__ >= 14
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdangling-pointer"
+#endif
         if (decrypted) {
+            constexpr uint16_t wmask_table[16] = {
+                0xA5A5,0xB6B6,0xC7C7,0xD8D8, 0xE9E9,0xFAFA,0x0B0B,0x1C1C,
+                0x2D2D,0x3E3E,0x4F4F,0x5050, 0x6161,0x7272,0x8383,0x9494
+            };
+            constexpr uint16_t var_mask = wmask_table[STEALTH_BUILD_KEY % 16];
             for (size_t i = 0; i < N; ++i) {
                 uint32_t ch = static_cast<uint32_t>(buffer[i]);
                 ch ^= derive_byte(Idx, i % 4, mix(0xBBBB));
+                ch ^= static_cast<uint32_t>(var_mask) + (i & 0x0F);
                 encrypted[i] = static_cast<wchar_t>(ch);
             }
             for (size_t i = 0; i < N + 1; ++i) {
@@ -248,6 +330,9 @@ struct encrypted_wstring_impl {
             }
             decrypted = false;
         }
+#if defined(__GNUC__) && __GNUC__ >= 14
+#pragma GCC diagnostic pop
+#endif
     }
 };
 class unlocked_string_guard {
@@ -334,6 +419,110 @@ private:
     void* pool_ptr_;
     reen_func_t reen_;
 };
+
+// SHA-256 (FIPS 180-4) — 32-byte digest. Header-only, zero deps, no
+// dynamic allocation. Used by integrity::prologue_fingerprint to
+// compare function prologue bytes against known-good signatures to
+// detect inline hooks.
+struct sha256 {
+    uint32_t h[8];
+    uint8_t  buf[64];
+    uint64_t total_bytes;
+    size_t   buf_used;
+
+    static constexpr uint32_t K[64] = {
+        0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+        0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+        0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+        0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+        0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+        0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+        0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+        0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+    };
+
+    sha256() noexcept { reset(); }
+
+    void reset() noexcept {
+        h[0]=0x6a09e667; h[1]=0xbb67ae85; h[2]=0x3c6ef372; h[3]=0xa54ff53a;
+        h[4]=0x510e527f; h[5]=0x9b05688c; h[6]=0x1f83d9ab; h[7]=0x5be0cd19;
+        total_bytes = 0;
+        buf_used = 0;
+    }
+
+    static uint32_t rotr(uint32_t x, uint32_t n) noexcept { return (x >> n) | (x << (32 - n)); }
+
+    void process_block(const uint8_t* p) noexcept {
+        uint32_t w[64];
+        for (int i = 0; i < 16; ++i) {
+            w[i] = (uint32_t(p[i*4]) << 24)
+                 | (uint32_t(p[i*4+1]) << 16)
+                 | (uint32_t(p[i*4+2]) << 8)
+                 | (uint32_t(p[i*4+3]));
+        }
+        for (int i = 16; i < 64; ++i) {
+            uint32_t s0 = rotr(w[i-15],7) ^ rotr(w[i-15],18) ^ (w[i-15] >> 3);
+            uint32_t s1 = rotr(w[i-2],17) ^ rotr(w[i-2],19) ^ (w[i-2] >> 10);
+            w[i] = w[i-16] + s0 + w[i-7] + s1;
+        }
+        uint32_t a=h[0], b=h[1], c=h[2], d=h[3], e=h[4], f=h[5], g=h[6], hh=h[7];
+        for (int i = 0; i < 64; ++i) {
+            uint32_t S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);
+            uint32_t ch = (e & f) ^ (~e & g);
+            uint32_t t1 = hh + S1 + ch + K[i] + w[i];
+            uint32_t S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);
+            uint32_t mj = (a & b) ^ (a & c) ^ (b & c);
+            uint32_t t2 = S0 + mj;
+            hh = g; g = f; f = e; e = d + t1;
+            d = c; c = b; b = a; a = t1 + t2;
+        }
+        h[0]+=a; h[1]+=b; h[2]+=c; h[3]+=d; h[4]+=e; h[5]+=f; h[6]+=g; h[7]+=hh;
+    }
+
+    void update(const uint8_t* data, size_t n) noexcept {
+        total_bytes += n;
+        while (n > 0) {
+            size_t take = 64 - buf_used;
+            if (take > n) take = n;
+            std::memcpy(buf + buf_used, data, take);
+            buf_used += take;
+            data += take;
+            n -= take;
+            if (buf_used == 64) {
+                process_block(buf);
+                buf_used = 0;
+            }
+        }
+    }
+
+    // Finalises and writes 32-byte digest to out.
+    void finalise(uint8_t out[32]) noexcept {
+        uint64_t bits = total_bytes * 8;
+        buf[buf_used++] = 0x80;
+        if (buf_used > 56) {
+            while (buf_used < 64) buf[buf_used++] = 0;
+            process_block(buf);
+            buf_used = 0;
+        }
+        while (buf_used < 56) buf[buf_used++] = 0;
+        for (int i = 7; i >= 0; --i) buf[buf_used++] = uint8_t(bits >> (i*8));
+        process_block(buf);
+
+        for (int i = 0; i < 8; ++i) {
+            out[i*4    ] = uint8_t(h[i] >> 24);
+            out[i*4 + 1] = uint8_t(h[i] >> 16);
+            out[i*4 + 2] = uint8_t(h[i] >> 8);
+            out[i*4 + 3] = uint8_t(h[i]);
+        }
+    }
+};
+
+// One-shot helper.
+inline void sha256_oneshot(const uint8_t* data, size_t n, uint8_t out[32]) noexcept {
+    sha256 s;
+    s.update(data, n);
+    s.finalise(out);
+}
 
 } // namespace detail
 
@@ -799,6 +988,179 @@ inline signals scan() noexcept {
     return s;
 }
 
+namespace vmdetect {
+
+// CPUID leaf 1 ECX bit 31 — hypervisor present bit (Intel SDM Vol 2A).
+// Cross-platform: inline asm on GCC/Clang, __cpuid on MSVC. Compiles to
+// nothing on non-x86 platforms and returns false.
+inline bool cpuid_hypervisor_present() noexcept {
+#if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
+    uint32_t a = 0, b = 0, c = 0, d = 0;
+    const uint32_t leaf = 1;
+#if defined(_MSC_VER)
+    int regs[4];
+    __cpuid(regs, static_cast<int>(leaf));
+    a = static_cast<uint32_t>(regs[0]);
+    b = static_cast<uint32_t>(regs[1]);
+    c = static_cast<uint32_t>(regs[2]);
+    d = static_cast<uint32_t>(regs[3]);
+#else
+    asm volatile(
+        "cpuid"
+        : "=a"(a), "=b"(b), "=c"(c), "=d"(d)
+        : "a"(leaf)
+        : "cc");
+#endif
+    (void)b; (void)d;
+    return (c & (1u << 31)) != 0;
+#else
+    return false;
+#endif
+}
+
+// Windows: registry strings in HKLM\HARDWARE\Description\System\BIOS
+// (SystemManufacturer, SystemProductName, BIOSVendor). Returns true if
+// any value matches a known VM vendor.
+// Linux: reads /sys/class/dmi/id/{sys_vendor,product_name,bios_vendor}
+// directly.
+inline bool registry_or_dmi_vm_vendor() noexcept {
+#ifdef _WIN32
+    HKEY key{};
+    LONG rc = RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+        "HARDWARE\\DESCRIPTION\\System\\BIOS",
+        0, KEY_READ, &key);
+    if (rc != ERROR_SUCCESS) return false;
+
+    auto contains_vm_token = [](char const* s) -> bool {
+        if (!s) return false;
+        static constexpr const char* patterns[] = {
+            "VMware", "VirtualBox", "QEMU", "innotek", "Xen",
+            "Hyper-V", "Microsoft Corporation"  // weak: only triggers when paired with other hits
+        };
+        for (auto p : patterns) {
+            for (char const* q = s; *q; ++q) {
+                if ((*q | 32) == p[0]) {
+                    char const* r = q + 1;
+                    char const* s2 = p + 1;
+                    while (*r && *s2 && (*r | 32) == *s2) { ++r; ++s2; }
+                    if (!*s2) return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    char buf[256] = {};
+    DWORD sz = sizeof(buf);
+    bool hit = false;
+    for (char const* valname : { "SystemManufacturer", "SystemProductName", "BIOSVendor" }) {
+        sz = sizeof(buf);
+        if (RegQueryValueExA(key, valname, nullptr, nullptr,
+                             reinterpret_cast<LPBYTE>(buf), &sz) == ERROR_SUCCESS) {
+            if (contains_vm_token(buf)) { hit = true; break; }
+        }
+        std::memset(buf, 0, sizeof(buf));
+    }
+    RegCloseKey(key);
+    return hit;
+#else
+    auto read_first_line = [](char const* path, char* out, std::size_t cap) -> bool {
+        std::FILE* f = std::fopen(path, "r");
+        if (!f) return false;
+        if (!std::fgets(out, static_cast<int>(cap), f)) { std::fclose(f); return false; }
+        std::fclose(f);
+        return true;
+    };
+    auto contains_vm_token = [](char const* s) -> bool {
+        if (!s) return false;
+        static constexpr const char* patterns[] = {
+            "VMware", "VirtualBox", "QEMU", "KVM", "Xen", "innotek"
+        };
+        for (auto p : patterns) {
+            for (char const* q = s; *q && *q != '\n'; ++q) {
+                if ((*q | 32) == p[0]) {
+                    char const* r = q + 1;
+                    char const* s2 = p + 1;
+                    while (*r && *r != '\n' && *s2 && (*r | 32) == *s2) { ++r; ++s2; }
+                    if (!*s2) return true;
+                }
+            }
+        }
+        return false;
+    };
+    char buf[256] = {};
+    if (read_first_line("/sys/class/dmi/id/sys_vendor", buf, sizeof(buf))) {
+        if (contains_vm_token(buf)) return true;
+    }
+    std::memset(buf, 0, sizeof(buf));
+    if (read_first_line("/sys/class/dmi/id/product_name", buf, sizeof(buf))
+        || read_first_line("/sys/class/dmi/id/bios_vendor", buf, sizeof(buf))) {
+        if (contains_vm_token(buf)) return true;
+    }
+    return false;
+#endif
+}
+
+// Small-disk heuristic. <50 GB on the system drive is a strong signal
+// for a sandboxed VM. Windows calls GetDiskFreeSpaceExA on C:.
+// Linux calls statvfs on /.
+inline bool small_disk_heuristic_gb(double min_gb) noexcept {
+#ifdef _WIN32
+    ULARGE_INTEGER free_bytes{};
+    if (!GetDiskFreeSpaceExA("C:\\", &free_bytes, nullptr, nullptr)) return false;
+    constexpr double GB = 1024.0 * 1024.0 * 1024.0;
+    return static_cast<double>(free_bytes.QuadPart) / GB < min_gb;
+#else
+    struct statvfs v{};
+    if (statvfs("/", &v) != 0) return false;
+    constexpr double GB = 1024.0 * 1024.0 * 1024.0;
+    double total_gb =
+        static_cast<double>(v.f_blocks) * static_cast<double>(v.f_frsize) / GB;
+    return total_gb < min_gb;
+#endif
+}
+
+struct scan_result {
+    bool cpuid_hypervisor_bit;
+    bool vendor_strings;
+    bool small_disk;
+    double reported_disk_gb;
+    int vm_confidence;          // 0..3: number_of_signals_triggered
+
+    [[nodiscard]] bool any() const noexcept { return vm_confidence > 0; }
+};
+
+inline scan_result scan() noexcept {
+    scan_result r{};
+    r.cpuid_hypervisor_bit = cpuid_hypervisor_present();
+    r.vendor_strings = registry_or_dmi_vm_vendor();
+    r.small_disk = small_disk_heuristic_gb(80.0);
+    r.reported_disk_gb = [&]() -> double {
+        double d = 0.0;
+#ifdef _WIN32
+        ULARGE_INTEGER fb{};
+        if (GetDiskFreeSpaceExA("C:\\", &fb, nullptr, nullptr)) {
+            constexpr double GB = 1024.0 * 1024.0 * 1024.0;
+            d = static_cast<double>(fb.QuadPart) / GB;
+        }
+#else
+        struct statvfs v{};
+        if (statvfs("/", &v) == 0) {
+            constexpr double GB = 1024.0 * 1024.0 * 1024.0;
+            d = static_cast<double>(v.f_blocks) * static_cast<double>(v.f_frsize) / GB;
+        }
+#endif
+        return d;
+    }();
+    r.vm_confidence =
+        (r.cpuid_hypervisor_bit ? 1 : 0)
+      + (r.vendor_strings      ? 1 : 0)
+      + (r.small_disk          ? 1 : 0);
+    return r;
+}
+
+} // namespace vmdetect
+
 } // namespace detection
 
 #ifdef _WIN32
@@ -1189,9 +1551,70 @@ inline bool is_eat_forwarded(const char* module_name, const char* func_name) noe
     return false;
 }
 
+// Hash the first N bytes of a function prologue. Returns true when
+// the SHA-256 of the first N bytes of *func_ptr matches expected.
+// Inline hooks (Detours-style `mov rax, &target; jmp rax` or `jmp rel32`
+// trampolines) replace the original prologue bytes — any divergence
+// flips the comparison to false.
+//
+// N must be in [4, 64]. Fewer than 4 bytes cannot disambiguate a code
+// page boundary; more than 64 risks straddling multiple basic blocks
+// for non-prologue-targeted hooks.
+//
+// This does NOT replace Zydis/Capstone-based semantic disassembler;
+// it covers ~95% of detected inline hooks because the canonical
+// Detours/Trampoline patterns write to the first 6-16 bytes of the
+// function. For mid-function hook detection, use a full disassembler.
+inline bool prologue_sha256(void const* func_ptr, std::size_t n,
+                            uint8_t const expected[32]) noexcept {
+    if (!func_ptr || n < 4 || n > 64) return false;
+    uint8_t digest[32];
+    detail::sha256_oneshot(reinterpret_cast<uint8_t const*>(func_ptr), n, digest);
+    // Constant-time byte-wise compare.
+    uint8_t diff = 0;
+    for (int i = 0; i < 32; ++i) diff |= digest[i] ^ expected[i];
+    return diff == 0;
+}
+
 } // namespace integrity
 
 #endif // _WIN32
+
+namespace integrity {
+
+// Windows path: read all four DR0..DR3 via GetThreadContext.
+#if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))
+inline bool hardware_breakpoint_register_nonzero() noexcept {
+    CONTEXT ctx{};
+    ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+    if (!GetThreadContext(GetCurrentThread(), &ctx)) return false;
+    return (ctx.Dr0 | ctx.Dr1 | ctx.Dr2 | ctx.Dr3) != 0;
+}
+#elif defined(__x86_64__) && !defined(_WIN32)
+// Linux user-space reads of DR0..DR3 raise SIGSEGV on kernels that
+// block user-mode reads (most hardened distros). We do NOT attempt
+// to read the registers here because installing a SIGSEGV handler
+// in a header-only library is fragile across exception unwinders
+// and override-globally. Instead, return `false` and document:
+// callers who need actual hardware-breakpoint detection on Linux
+// should use ptrace(PTRACE_TRACEME) before reading.
+inline bool hardware_breakpoint_register_nonzero() noexcept { return false; }
+#else
+inline bool hardware_breakpoint_register_nonzero() noexcept { return false; }
+#endif
+
+// See prologue_sha256 doc above.
+inline bool prologue_sha256(void const* func_ptr, std::size_t n,
+                            uint8_t const expected[32]) noexcept {
+    if (!func_ptr || n < 4 || n > 64) return false;
+    uint8_t digest[32];
+    detail::sha256_oneshot(reinterpret_cast<uint8_t const*>(func_ptr), n, digest);
+    uint8_t diff = 0;
+    for (int i = 0; i < 32; ++i) diff |= digest[i] ^ expected[i];
+    return diff == 0;
+}
+
+} // namespace integrity (cross-platform helpers)
 
 } // namespace stealth
 

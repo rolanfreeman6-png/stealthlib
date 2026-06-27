@@ -9,7 +9,7 @@ int main() {
     std::cout << "[+] StealthLib Integration Test\n\n";
 
     std::cout << "[*] Testing version info...\n";
-    assert(std::strcmp(stealth::version(), "1.0.0") == 0);
+    assert(std::strcmp(stealth::version(), "2.1.2") == 0);
     std::cout << "[+] Version: " << stealth::version() << " - PASSED\n\n";
 
     std::cout << "[*] Testing string encryption integration...\n";
@@ -29,8 +29,7 @@ int main() {
     assert(!encoded.empty());
     auto decoded = stealth::encoding::base64_decode(encoded);
     assert(decoded.has_value());
-    std::string decoded_str(reinterpret_cast<const char*>(decoded.data), decoded.len);
-    assert(decoded_str == original);
+    assert(*decoded == original);
     std::cout << "[+] Base64 encode/decode - PASSED\n\n";
 
     std::cout << "[*] Testing secure memory operations...\n";

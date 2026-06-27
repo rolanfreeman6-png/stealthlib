@@ -118,22 +118,20 @@ if(STEALTH_BUILD_TESTS)
     include(CTest)
     add_subdirectory(tests)
     if(STEALTH_BUILD_FIXTURES)
-        add_custom_command(
-            OUTPUT ${STEALTHLIB_FIXTURES_BUILD_DIR}/is_forwarder.dll
-                   ${STEALTHLIB_FIXTURES_BUILD_DIR}/tiny_null.dll
-                   ${STEALTHLIB_FIXTURES_BUILD_DIR}/corrupt_header.bin
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${STEALTHLIB_FIXTURES_BUILD_DIR}
-            COMMAND ${Python3_EXECUTABLE} ${STEALTHLIB_FIXTURES_DIR}/generate_pe.py
-                    ${STEALTHLIB_FIXTURES_BUILD_DIR}
-            DEPENDS ${STEALTHLIB_FIXTURES_DIR}/generate_pe.py
-            COMMENT "Generating PE fixture files (DIE-compatible)"
-            VERBATIM
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        # Generate fixtures directly into the tests' working directory at
+        # configure time, so the doctest PE tests find "fixtures/<file>"
+        # with no build-order copy step (robust across single/multi-config
+        # generators and parallel builds).
+        set(STEALTHLIB_FIXTURES_OUT_DIR "${CMAKE_BINARY_DIR}/tests/fixtures")
+        file(MAKE_DIRECTORY "${STEALTHLIB_FIXTURES_OUT_DIR}")
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}" "${STEALTHLIB_FIXTURES_DIR}/generate_pe.py" "${STEALTHLIB_FIXTURES_OUT_DIR}"
+            RESULT_VARIABLE _stealth_fixture_rc
         )
-        add_custom_target(stealth_pe_fixtures
-            DEPENDS ${STEALTHLIB_FIXTURES_BUILD_DIR}/is_forwarder.dll
-                    ${STEALTHLIB_FIXTURES_BUILD_DIR}/tiny_null.dll
-                    ${STEALTHLIB_FIXTURES_BUILD_DIR}/corrupt_header.bin
-        )
+        if(NOT _stealth_fixture_rc EQUAL 0)
+            message(FATAL_ERROR "PE fixture generation failed (rc=${_stealth_fixture_rc})")
+        endif()
     endif()
 endif()
 

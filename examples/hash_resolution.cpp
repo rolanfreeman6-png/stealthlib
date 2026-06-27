@@ -44,7 +44,7 @@ int main() {
     std::cout << "[*] module hash(kernel32.dll) = 0x" << std::hex << h_kernel32 << "\n";
     std::cout << "[*] func   hash(MessageBoxW)  = 0x" << std::hex << h_msgbox_w << "\n";
 
-    using MessageBoxW_t = int(HWND, LPCWSTR, LPCWSTR, UINT);
+    using MessageBoxW_t = int(*)(HWND, LPCWSTR, LPCWSTR, UINT);
     auto mb = stealth::get_function_by_hash<MessageBoxW_t>(h_user32, h_msgbox_w);
     if (mb) {
         std::cout << "[+] MessageBoxW resolved by hash at " << reinterpret_cast<void*>(&mb) << "\n";
@@ -53,7 +53,7 @@ int main() {
         std::cout << "[!] Could not resolve MessageBoxW (environment-specific)\n";
     }
 
-    using GetTickCount64_t = ULONGLONG(*)();
+    using GetTickCount64_t = ULONGLONG();
     auto gt = stealth::stealth_api<GetTickCount64_t>(h_kernel32, h_tick64);
     if (gt.is_valid()) {
         std::cout << "[+] GetTickCount64 resolved by hash: uptime=" << gt.get()() << "ms\n";

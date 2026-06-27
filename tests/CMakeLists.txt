@@ -5,9 +5,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include_directories(${CMAKE_SOURCE_DIR}/stealthlib ${CMAKE_SOURCE_DIR})
 
-# Fixture directory used by doctest-based tests. The custom command in the
-# top-level CMakeLists.txt generates the files here.
-set(STEALTH_FIXTURES_DIR "${CMAKE_BINARY_DIR}/fixtures")
+# Fixture directory used by doctest-based tests. Generated at configure
+# time (see top-level CMakeLists.txt) directly here == the tests' working
+# directory, so runtime open("fixtures/...") resolves with no copy step.
+set(STEALTH_FIXTURES_DIR "${CMAKE_BINARY_DIR}/tests/fixtures")
 
 foreach(flags_var
     CMAKE_CXX_FLAGS_RELEASE
@@ -35,23 +36,9 @@ function(add_stealth_test name)
     )
 endfunction()
 
-# v2.0 doctest-based tests depend on the fixtures custom command.
-# Pull fixtures into the test working dir so runtime open("fixtures/...") works.
-foreach(_doctest_tgt doctest_string_test doctest_peb_test doctest_integrity_test)
-    if(TARGET ${_doctest_tgt})
-        add_dependencies(${_doctest_tgt} stealth_pe_fixtures)
-        add_custom_command(TARGET ${_doctest_tgt} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                $<TARGET_FILE_DIR:${_doctest_tgt}>/fixtures
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${STEALTH_FIXTURES_DIR}/tiny_null.dll
-                ${STEALTH_FIXTURES_DIR}/corrupt_header.bin
-                ${STEALTH_FIXTURES_DIR}/is_forwarder.dll
-                $<TARGET_FILE_DIR:${_doctest_tgt}>/fixtures/
-            VERBATIM
-        )
-    endif()
-endforeach()
+# PE fixtures are generated at configure time (see top-level CMakeLists.txt)
+# directly into ${STEALTH_FIXTURES_DIR} == the tests' working directory, so
+# the doctest PE tests can open("fixtures/<file>") with no copy step.
 
 # --- v1.x baseline tests (assert-based) -----------------------------------
 
@@ -98,19 +85,6 @@ function(add_stealth_doctest_test name source)
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         LABELS "v2;doctest"
     )
-    if(STEALTH_BUILD_FIXTURES AND TARGET stealth_pe_fixtures)
-        add_dependencies(${name} stealth_pe_fixtures)
-        add_custom_command(TARGET ${name} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-            $<TARGET_FILE_DIR:${name}>/fixtures
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${STEALTH_FIXTURES_DIR}/tiny_null.dll
-            ${STEALTH_FIXTURES_DIR}/corrupt_header.bin
-            ${STEALTH_FIXTURES_DIR}/is_forwarder.dll
-            $<TARGET_FILE_DIR:${name}>/fixtures/
-        VERBATIM
-    )
-    endif()
 endfunction()
 
 add_stealth_doctest_test(doctest_string_test    test_strings.cpp)
@@ -146,15 +120,21 @@ add_stealth_test(test_sse2_parity           test_sse2_parity.cpp)
 # runs as a deterministic local-fuzz driver using a fixed seed corpus.
 option(STEALTH_BUILD_FUZZER "Build libfuzzer harness (requires clang)" OFF)
 if(STEALTH_BUILD_FUZZER)
-    add_executable(fuzz_hashes fuzz_hashes.cpp)
-    target_link_libraries(fuzz_hashes PRIVATE stealthlib)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        target_compile_options(fuzz_hashes PRIVATE -Wall -Wextra -Wpedantic)
-        if(DEFINED STEALTH_FUZZ_FLAGS)
-            target_compile_options(fuzz_hashes PRIVATE ${STEALTH_FUZZ_FLAGS})
+    function(add_stealth_fuzz name source)
+        add_executable(${name} ${source})
+        target_link_libraries(${name} PRIVATE stealthlib)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic)
+            if(DEFINED STEALTH_FUZZ_FLAGS)
+                target_compile_options(${name} PRIVATE ${STEALTH_FUZZ_FLAGS})
+                target_link_options(${name} PRIVATE ${STEALTH_FUZZ_FLAGS})
+            endif()
         endif()
-    endif()
-    if(WIN32)
-        target_compile_options(fuzz_hashes PRIVATE /W4 /permissive-)
-    endif()
+        if(WIN32)
+            target_compile_options(${name} PRIVATE /W4 /permissive-)
+        endif()
+    endfunction()
+    add_stealth_fuzz(fuzz_hashes   fuzz_hashes.cpp)
+    add_stealth_fuzz(fuzz_strings  fuzz_strings.cpp)
+    add_stealth_fuzz(fuzz_decoders fuzz_decoders.cpp)
 endif()

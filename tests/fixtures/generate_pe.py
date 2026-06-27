@@ -33,7 +33,7 @@ def align(offset: int, alignment: int) -> int:
 def tiny_null_dll(path: str) -> None:
     """Minimal PE64 DLL with empty export directory."""
     file_alignment = 0x200
-    section_alignment = 0x1000
+    section_alignment = 0x200
     header_size = 0x200
 
     # Layout
@@ -45,7 +45,7 @@ def tiny_null_dll(path: str) -> None:
     size_of_headers = align(dos_header_size + pe_sig_size + file_header_size + opt_header_64_size, file_alignment)
 
     # Sections: .rdata only (small) with empty export directory
-    export_dir_rva = section_alignment
+    export_dir_rva = size_of_headers
     export_dir_size = 40
     rdata_data = bytearray(export_dir_size)
     rdata_data[0:4] = struct.pack("<I", 0)        # Characteristics
@@ -126,102 +126,93 @@ def tiny_null_dll(path: str) -> None:
     dd[0:8] = struct.pack("<II", export_dir_rva, export_dir_size)  # Export Table
     out += dd
 
-    # Pad to size_of_headers
-    if len(out) < size_of_headers:
-        out += b"\x00" * (size_of_headers - len(out))
-
-    # Section table (one section)
+    # Section table (one section) -- part of the headers, before the pad.
     section_header = b".rdata\x00\x00\x00"  # Name (8)
     section_header += struct.pack("<I", rdata_virt_size)    # VirtualSize
     section_header += struct.pack("<I", export_dir_rva)     # VirtualAddress
     section_header += struct.pack("<I", rdata_raw_size)     # SizeOfRawData
-    section_header += struct.pack("<I", size_of_headers)    # PointerToRawData
+    section_header += struct.pack("<I", size_of_headers)    # PointerToRawData == VirtualAddress (flat)
     section_header += struct.pack("<IIIII",
         0, 0, 0, 0, 0  # PointerToRelocations ... NumberOfLineNumbers
     )
     section_header += struct.pack("<I", 0x40000040)  # Characteristics: INITIALIZED_DATA | READ
     out += section_header
-    if len(out) < size_of_headers + 40:
-        out += b"\x00" * (size_of_headers + 40 - len(out))
+
+    # Pad to size_of_headers so section data begins at export_dir_rva (flat).
+    if len(out) < size_of_headers:
+        out += b"\x00" * (size_of_headers - len(out))
 
     # Section data (.rdata)
+    out += rdata_data
     if len(out) < size_of_headers + rdata_raw_size:
-        out += rdata_data
         out += b"\x00" * (size_of_headers + rdata_raw_size - len(out))
-    else:
-        out[size_of_headers:size_of_headers + rdata_raw_size] = rdata_data[:rdata_raw_size]
 
     with open(path, "wb") as f:
         f.write(out)
 
 
 def is_forwarder_dll(path: str) -> None:
-    """Minimal PE64 DLL with one FORWARDED export."""
+    """Minimal FLAT PE64 DLL with one FORWARDED export ("A" -> kernel32.GetProcAddress).
+
+    Flat = SectionAlignment == FileAlignment, so every RVA equals its file
+    offset. The parser addresses exports via base+RVA (as it does for real
+    loaded images), so a flat raw fixture lets it read the bytes correctly.
+    """
     file_alignment = 0x200
-    section_alignment = 0x1000
+    section_alignment = 0x200  # flat: RVA == file offset
 
-    export_dir_rva = section_alignment
-    export_string_table_rva = export_dir_rva + 0x100
-    export_names_rva          = export_string_table_rva + 0x100
-    export_name_ordinals_rva  = export_names_rva + 0x40
-    export_functions_rva      = export_name_ordinals_rva + 0x40
-    export_forwarder_string_rva = export_functions_rva + 0x40
-
-    func_name = b"A\x00"
-    forwarder_string = b"kernel32.GetProcAddress\x00"
-
-    num_names = 1
-    num_functions = 1
-
-    # Strings & arrays
-    strings_blob = bytearray()
-    strings_blob += func_name  # at export_string_table_rva + 0
-    while len(strings_blob) % 16:
-        strings_blob += b"\x00"
-
-    names_blob = bytearray()
-    names_blob += struct.pack("<I", 0)  # name rva of "A" = export_string_table_rva + 0
-
-    arrays_blob = bytearray()
-    arrays_blob += struct.pack("<H", 0)  # ordinal index of "A"
-    arrays_blob += struct.pack("<I", export_forwarder_string_rva)  # functions[0] -> forwarder string rva
-
-    forwarder_blob = bytearray(forwarder_string)
-
-    # Export directory
-    export_blob = bytearray(40)
-    export_blob[20:24] = struct.pack("<I", num_functions)
-    export_blob[24:28] = struct.pack("<I", num_names)
-    export_blob[28:32] = struct.pack("<I", export_functions_rva)
-    export_blob[32:36] = struct.pack("<I", export_names_rva)
-    export_blob[36:40] = struct.pack("<I", export_name_ordinals_rva)
-
-    total_rdata = (
-        len(export_blob)
-        + len(strings_blob)
-        + len(names_blob)
-        + len(arrays_blob)
-        + len(forwarder_blob)
-    )
-    # Round to 16 for convenience
-    pad = (16 - (total_rdata % 16)) % 16
-    rdata_raw = total_rdata + pad
-    rdata_virt = ((total_rdata + section_alignment - 1) // section_alignment) * section_alignment
-
-    rdata_blob = bytearray()
-    rdata_blob += export_blob
-    rdata_blob += strings_blob
-    rdata_blob += names_blob
-    rdata_blob += arrays_blob
-    rdata_blob += forwarder_blob
-    rdata_blob += b"\x00" * (rdata_raw - len(rdata_blob))
-
-    # DOS header
     dos_header_size = 0x40
-    opt_header_64_size = 112 + 128
     file_header_size = 20
+    opt_header_64_size = 112 + 128
     size_of_headers = align(dos_header_size + 4 + file_header_size + opt_header_64_size + 40, file_alignment)
 
+    export_dir_rva = size_of_headers  # section begins here; RVA == file offset
+
+    # Contiguous .rdata layout (offset from rdata start == RVA - export_dir_rva):
+    #   0..40   IMAGE_EXPORT_DIRECTORY (40 bytes)
+    #   40..42  name string "A\0"
+    #   42..44  pad
+    #   44..48  AddressOfNames[1]      (uint32) -> RVA of "A"
+    #   48..52  AddressOfFunctions[1]  (uint32) -> RVA of forwarder string
+    #   52..54  AddressOfNameOrdinals[1] (uint16) = 0
+    #   54..    forwarder string "kernel32.GetProcAddress\0"
+    name_off = 40
+    names_off = 44
+    funcs_off = 48
+    ordinals_off = 52
+    fwd_off = 54
+    forwarder_string = b"kernel32.GetProcAddress\x00"
+
+    rdata = bytearray(40)  # export directory placeholder
+    while len(rdata) < name_off:
+        rdata += b"\x00"
+    rdata += b"A\x00"
+    while len(rdata) < names_off:
+        rdata += b"\x00"
+    rdata += struct.pack("<I", export_dir_rva + name_off)  # names[0] -> "A"
+    while len(rdata) < funcs_off:
+        rdata += b"\x00"
+    rdata += struct.pack("<I", export_dir_rva + fwd_off)   # functions[0] -> forwarder
+    while len(rdata) < ordinals_off:
+        rdata += b"\x00"
+    rdata += struct.pack("<H", 0)                          # ordinals[0] = 0
+    while len(rdata) < fwd_off:
+        rdata += b"\x00"
+    rdata += forwarder_string
+
+    # Fill the export directory (first 40 bytes of rdata).
+    rdata[16:20] = struct.pack("<I", 1)  # Base = 1
+    rdata[20:24] = struct.pack("<I", 1)  # NumberOfFunctions
+    rdata[24:28] = struct.pack("<I", 1)  # NumberOfNames
+    rdata[28:32] = struct.pack("<I", export_dir_rva + funcs_off)     # AddressOfFunctions
+    rdata[32:36] = struct.pack("<I", export_dir_rva + names_off)     # AddressOfNames
+    rdata[36:40] = struct.pack("<I", export_dir_rva + ordinals_off)  # AddressOfNameOrdinals
+
+    rdata_raw = align(len(rdata), file_alignment)
+    rdata_virt = align(len(rdata), section_alignment)
+    rdata += b"\x00" * (rdata_raw - len(rdata))
+
+    # DOS header
     out = bytearray()
     out += bytearray(dos_header_size)
     out[0:2] = MZ_MAGIC
@@ -231,25 +222,18 @@ def is_forwarder_dll(path: str) -> None:
     out += PE_MAGIC
 
     file_header = struct.pack("<HHIIIHH",
-        0x8664,
-        1,
-        0xCAFEBABE,
-        0, 0,
-        opt_header_64_size,
-        0x2022,
-    )
+        0x8664, 1, 0xCAFEBABE, 0, 0, opt_header_64_size, 0x2022)
     out += file_header
 
     std_fields = struct.pack(
         "<HBBIIIIIQIIHHHHHHIIIIHHQQQQII",
         0x20b, 14, 0,
-        0, 0, 0,
-        0, 0,
+        0, 0, 0, 0, 0,
         0x180000000,
         section_alignment, file_alignment,
         6, 0, 0, 0, 6, 0,
         0,
-        size_of_headers + rdata_virt,
+        size_of_headers + rdata_virt,  # SizeOfImage
         size_of_headers, 0,
         3, 0x4160,
         0x100000, 0x1000, 0x100000, 0x1000,
@@ -258,39 +242,25 @@ def is_forwarder_dll(path: str) -> None:
     out += std_fields
 
     dd = bytearray(128)
-    dd[0:8] = struct.pack("<II", export_dir_rva, 40)
+    dd[0:8] = struct.pack("<II", export_dir_rva, 40)  # Export Table (rva, size)
     out += dd
 
+    section_header = b".rdata\x00\x00\x00"
+    section_header += struct.pack("<I", rdata_virt)        # VirtualSize
+    section_header += struct.pack("<I", export_dir_rva)    # VirtualAddress
+    section_header += struct.pack("<I", rdata_raw)         # SizeOfRawData
+    section_header += struct.pack("<I", size_of_headers)   # PointerToRawData == VirtualAddress (flat)
+    section_header += struct.pack("<IIIII", 0, 0, 0, 0, 0)
+    section_header += struct.pack("<I", 0x40000040)        # INITIALIZED_DATA | READ
+    out += section_header
+
+    # Pad to size_of_headers so section data begins at export_dir_rva (flat).
     if len(out) < size_of_headers:
         out += b"\x00" * (size_of_headers - len(out))
 
-    section_header = b".rdata\x00\x00\x00"
-    section_header += struct.pack("<I", rdata_virt)
-    section_header += struct.pack("<I", export_dir_rva)
-    section_header += struct.pack("<I", rdata_raw)
-    section_header += struct.pack("<I", size_of_headers)
-    section_header += struct.pack("<IIIII", 0, 0, 0, 0, 0)
-    section_header += struct.pack("<I", 0x40000040)
-    out += section_header
-    if len(out) < size_of_headers + 40:
-        out += b"\x00" * (size_of_headers + 40 - len(out))
-
-    offset = size_of_headers
-    out += rdata_blob
+    out += rdata
     if len(out) < size_of_headers + rdata_raw:
         out += b"\x00" * (size_of_headers + rdata_raw - len(out))
-
-    assert export_string_table_rva == export_dir_rva + 0x100
-    assert export_names_rva == export_string_table_rva + 0x100
-    assert export_name_ordinals_rva == export_names_rva + 0x40
-    assert export_functions_rva == export_name_ordinals_rva + 0x40
-
-    # reality-check: the offsets encode as offsets from rdata_blob start
-    # export_blob at 0 -> export_dir_rva
-    # strings_blob at len(export_blob) -> export_string_table_rva
-    # names_blob at len(export_blob)+len(strings_blob) -> export_names_rva
-    # arrays_blob at len(export_blob)+len(strings_blob)+len(names_blob) -> export_name_ordinals_rva
-    # forwarder_blob at ... -> export_forwarder_string_rva
 
     with open(path, "wb") as f:
         f.write(out)

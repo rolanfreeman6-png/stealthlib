@@ -45,12 +45,12 @@ static bool test_ss_length() { stealth::secure_string<256> ss("hello"); return s
 static bool test_ss_clear() { stealth::secure_string<256> ss("sensitive_data"); ss.clear(); for (size_t i = 0; i < 256; ++i) if (ss.c_str()[i] != '\0') return false; return ss.length() == 0; }
 static bool test_ss_default() { stealth::secure_string<256> ss; return ss.length() == 0 && ss.c_str()[0] == '\0'; }
 static bool test_ss_truncate() { stealth::secure_string<8> ss("1234567890ABCDEF"); return ss.length() == 7; }
-static bool test_ss_data() { stealth::secure_string<256> ss("access"); return ss.data() != nullptr && ss.data()[0] == 'a'; }
+static bool test_ss_data() { stealth::secure_string<256> ss("access"); return ss.raw_data() != nullptr && ss.raw_data()[0] == 'a'; }
 static bool test_ss_destructor() {
     using string_t = stealth::secure_string<64>;
     alignas(string_t) unsigned char storage[sizeof(string_t)]{};
     auto* ss = new (storage) string_t("will_be_zeroed");
-    std::memcpy(ss->data(), "XXXXXXXXXXXX", 13);
+    std::memcpy(ss->raw_data(), "XXXXXXXXXXXX", 13);
     ss->~string_t();
     for (size_t i = 0; i < sizeof(storage); ++i) {
         if (storage[i] != 0) return false;
@@ -63,20 +63,20 @@ static bool test_b64_hello() { return stealth::encoding::base64_encode("Hello") 
 static bool test_b64_man() { return stealth::encoding::base64_encode("Man") == "TWFu"; }
 static bool test_b64_single() { return stealth::encoding::base64_encode("A") == "QQ=="; }
 static bool test_b64_two() { return stealth::encoding::base64_encode("AB") == "QUI="; }
-static bool test_b64_roundtrip() { const char* original = "test_data_123!@#"; auto encoded = stealth::encoding::base64_encode(original); auto decoded = stealth::encoding::base64_decode<256>(encoded); if (!decoded.has_value()) return false; std::string result(reinterpret_cast<const char*>(decoded.data), decoded.len); return result == original; }
-static bool test_b64_binary() { uint8_t bin[] = {0x00, 0x01, 0xFF, 0xFE, 0x80, 0x7F}; auto encoded = stealth::encoding::base64_encode(bin, 6); auto decoded = stealth::encoding::base64_decode<64>(encoded); if (!decoded.has_value() || decoded.len != 6) return false; return std::memcmp(decoded.data, bin, 6) == 0; }
-static bool test_b64_invalid_len() { return !stealth::encoding::base64_decode<64>("invalid!!!").has_value(); }
-static bool test_b64_invalid_char() { return !stealth::encoding::base64_decode<64>("!!!!").has_value(); }
-static bool test_b64_long() { std::string long_str(300, 'X'); auto encoded = stealth::encoding::base64_encode(long_str); auto decoded = stealth::encoding::base64_decode<1024>(encoded); if (!decoded.has_value()) return false; std::string result(reinterpret_cast<const char*>(decoded.data), decoded.len); return result == long_str; }
+static bool test_b64_roundtrip() { const char* original = "test_data_123!@#"; auto encoded = stealth::encoding::base64_encode(original); auto decoded = stealth::encoding::base64_decode(encoded); if (!decoded.has_value()) return false; return *decoded == original; }
+static bool test_b64_binary() { uint8_t bin[] = {0x00, 0x01, 0xFF, 0xFE, 0x80, 0x7F}; auto encoded = stealth::encoding::base64_encode(bin, 6); auto decoded = stealth::encoding::base64_decode(encoded); if (!decoded.has_value() || decoded->size() != 6) return false; return std::memcmp(decoded->data(), bin, 6) == 0; }
+static bool test_b64_invalid_len() { return !stealth::encoding::base64_decode("invalid!!!").has_value(); }
+static bool test_b64_invalid_char() { return !stealth::encoding::base64_decode("!!!!").has_value(); }
+static bool test_b64_long() { std::string long_str(300, 'X'); auto encoded = stealth::encoding::base64_encode(long_str); auto decoded = stealth::encoding::base64_decode(encoded); if (!decoded.has_value()) return false; return *decoded == long_str; }
 
 static bool test_hex_empty() { return stealth::encoding::hex_encode("").empty(); }
 static bool test_hex_hello() { return stealth::encoding::hex_encode("Hello") == "48656C6C6F"; }
 static bool test_hex_binary() { uint8_t data[] = {0x00, 0xFF, 0x0A, 0x5B}; return stealth::encoding::hex_encode(data, 4) == "00FF0A5B"; }
-static bool test_hex_roundtrip() { const char* original = "round_trip_test"; auto encoded = stealth::encoding::hex_encode(original); auto decoded = stealth::encoding::hex_decode<256>(encoded); if (!decoded.has_value()) return false; std::string result(reinterpret_cast<const char*>(decoded.data), decoded.len); return result == original; }
-static bool test_hex_lower() { auto result = stealth::encoding::hex_decode<64>("48656c6c6f"); if (!result.has_value()) return false; std::string str(reinterpret_cast<const char*>(result.data), result.len); return str == "Hello"; }
-static bool test_hex_odd() { return !stealth::encoding::hex_decode<64>("ABC").has_value(); }
-static bool test_hex_invalid() { return !stealth::encoding::hex_decode<64>("GG").has_value(); }
-static bool test_hex_long() { std::string data(200, '\x42'); auto encoded = stealth::encoding::hex_encode(data); auto decoded = stealth::encoding::hex_decode<1024>(encoded); if (!decoded.has_value()) return false; return decoded.len == 200 && static_cast<char>(decoded.data[0]) == '\x42'; }
+static bool test_hex_roundtrip() { const char* original = "round_trip_test"; auto encoded = stealth::encoding::hex_encode(original); auto decoded = stealth::encoding::hex_decode(encoded); if (!decoded.has_value()) return false; std::string result(decoded->begin(), decoded->end()); return result == original; }
+static bool test_hex_lower() { auto result = stealth::encoding::hex_decode("48656c6c6f"); if (!result.has_value()) return false; std::string str(result->begin(), result->end()); return str == "Hello"; }
+static bool test_hex_odd() { return !stealth::encoding::hex_decode("ABC").has_value(); }
+static bool test_hex_invalid() { return !stealth::encoding::hex_decode("GG").has_value(); }
+static bool test_hex_long() { std::string data(200, '\x42'); auto encoded = stealth::encoding::hex_encode(data); auto decoded = stealth::encoding::hex_decode(encoded); if (!decoded.has_value()) return false; return decoded->size() == 200 && static_cast<char>((*decoded)[0]) == '\x42'; }
 
 static bool test_xor_roundtrip() { stealth::encoding::xor_key<16> key{"testkey123"}; uint8_t data[] = "xor_test_data"; size_t len = std::strlen(reinterpret_cast<char*>(data)); stealth::encoding::xor_encode(data, len, key); stealth::encoding::xor_decode(data, len, key); return std::strcmp(reinterpret_cast<char*>(data), "xor_test_data") == 0; }
 static bool test_xor_zero_key() { stealth::encoding::xor_key<16> key{}; uint8_t data[] = {0x41, 0x42, 0x43}; stealth::encoding::xor_encode(data, 3, key); return data[0] == 0x41 && data[1] == 0x42 && data[2] == 0x43; }
@@ -126,16 +126,16 @@ static bool test_loader_getfunc() { stealth::module_loader l("kernel32.dll"); us
 static bool test_loader_null() { stealth::module_loader l("nonexistent.dll"); using Fn = void(*)(); return l.get_function<Fn>("AnyFunc") == nullptr; }
 static bool test_loader_base() { stealth::module_loader l("kernel32.dll"); return l.get() != nullptr; }
 
-static bool test_sapi_def() { stealth::stealth_api<DWORD(*)()> api; return !api.is_valid(); }
-static bool test_sapi_resolve() { stealth::stealth_api<DWORD(*)()> api("kernel32.dll", "GetTickCount"); return api.is_valid(); }
-static bool test_sapi_null() { stealth::stealth_api<DWORD(*)()> api(nullptr); return !api.is_valid(); }
+static bool test_sapi_def() { stealth::stealth_api<DWORD()> api; return !api.is_valid(); }
+static bool test_sapi_resolve() { stealth::stealth_api<DWORD()> api("kernel32.dll", "GetTickCount"); return api.is_valid(); }
+static bool test_sapi_null() { stealth::stealth_api<DWORD()> api(nullptr); return !api.is_valid(); }
 static bool test_sapi_fake() { stealth::stealth_api<void()> api("kernel32.dll", "FakeFunctionXYZ"); return !api.is_valid(); }
-static bool test_sapi_reset() { stealth::stealth_api<DWORD(*)()> api("kernel32.dll", "GetTickCount"); api.reset(); return !api.is_valid(); }
-static bool test_sapi_reset_resolve() { stealth::stealth_api<DWORD(*)()> api; api.reset("kernel32.dll", "GetTickCount"); return api.is_valid(); }
+static bool test_sapi_reset() { stealth::stealth_api<DWORD()> api("kernel32.dll", "GetTickCount"); api.reset(); return !api.is_valid(); }
+static bool test_sapi_reset_resolve() { stealth::stealth_api<DWORD()> api; api.reset("kernel32.dll", "GetTickCount"); return api.is_valid(); }
 
-static bool test_version() { return std::strcmp(stealth::version(), "1.0.0") == 0; }
-static bool test_workflow_b64() { auto secret = S("my_api_key_123"); auto b64 = stealth::encoding::base64_encode(secret); auto decoded = stealth::encoding::base64_decode<256>(b64); if (!decoded.has_value()) return false; std::string result(reinterpret_cast<const char*>(decoded.data), decoded.len); return result == "my_api_key_123"; }
-static bool test_workflow_hex_xor() { auto secret = S("confidential"); auto hex = stealth::encoding::hex_encode(secret); auto hex_decoded = stealth::encoding::hex_decode<256>(hex); if (!hex_decoded.has_value()) return false; stealth::encoding::xor_key<16> key{"xorkey"}; stealth::encoding::xor_encode(hex_decoded.data, hex_decoded.len, key); stealth::encoding::xor_decode(hex_decoded.data, hex_decoded.len, key); std::string result(reinterpret_cast<const char*>(hex_decoded.data), hex_decoded.len); return result == "confidential"; }
+static bool test_version() { return std::strcmp(stealth::version(), "2.1.2") == 0; }
+static bool test_workflow_b64() { auto secret = S("my_api_key_123"); auto b64 = stealth::encoding::base64_encode(secret.c_str()); auto decoded = stealth::encoding::base64_decode(b64); if (!decoded.has_value()) return false; return *decoded == "my_api_key_123"; }
+static bool test_workflow_hex_xor() { auto secret = S("confidential"); auto hex = stealth::encoding::hex_encode(secret.c_str()); auto hex_decoded_opt = stealth::encoding::hex_decode(hex); if (!hex_decoded_opt.has_value()) return false; auto hex_decoded = std::move(*hex_decoded_opt); stealth::encoding::xor_key<16> key{"xorkey"}; stealth::encoding::xor_encode(hex_decoded.data(), hex_decoded.size(), key); stealth::encoding::xor_decode(hex_decoded.data(), hex_decoded.size(), key); std::string result(hex_decoded.begin(), hex_decoded.end()); return result == "confidential"; }
 
 int main() {
     std::cout << "========================================\n";

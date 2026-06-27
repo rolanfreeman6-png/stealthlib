@@ -21,6 +21,11 @@ bool read_file(const std::string& path, std::vector<uint8_t>& out) {
     if (sz > 0) f.read(reinterpret_cast<char*>(out.data()), sz);
     return f.good() || f.eof();
 }
+// Ensure user32.dll is in the PEB module list for the lookups below; a
+// bare console test process does not always have it loaded.
+struct ensure_user32_loaded {
+    ensure_user32_loaded() { (void)LoadLibraryA("user32.dll"); }
+} ensure_user32_loaded_instance;
 }
 
 TEST_CASE("peb pointer non-null") {
@@ -183,7 +188,7 @@ TEST_CASE("rva_in_image rejects out-of-range RVAs") {
     REQUIRE(stealth::get_module_base(L"kernel32.dll", &base));
     auto* nt = stealth::get_nt(base);
     REQUIRE(nt != nullptr);
-    CHECK(stealth::rva_in_image(base, 0) != 0);
+    CHECK(stealth::rva_in_image(base, 0x1000) != 0);
     CHECK(stealth::rva_in_image(base, nt->SizeOfImage - 4) != 0);
     CHECK(stealth::rva_in_image(base, nt->SizeOfImage + 1) == 0);
     CHECK(stealth::rva_in_image(nullptr, 0) == 0);

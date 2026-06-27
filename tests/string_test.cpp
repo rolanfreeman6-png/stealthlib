@@ -57,6 +57,20 @@ int main() {
     assert(all_zero);
     std::cout << "[+] Test 10: Secure string with clear - PASSED\n";
 
+    auto empty_n = S("");
+    assert(std::strcmp(empty_n, "") == 0);
+    assert(empty_n.size() == 0);
+    assert(std::strcmp(*empty_n, "") == 0);
+    auto g = empty_n.unlock();
+    assert(std::strcmp(g.c_str(), "") == 0);
+
+    auto empty_w = SW(L"");
+    assert(std::wcscmp(empty_w, L"") == 0);
+    assert(empty_w.size() == 0);
+    auto wg = empty_w.unlock();
+    assert(std::wcscmp(wg.c_str(), L"") == 0);
+    std::cout << "[+] Test 11: Empty literal S(\"\") / SW(L\"\") - PASSED\n";
+
     std::cout << "\n[+] All string encryption tests PASSED!\n";
     return 0;
 }

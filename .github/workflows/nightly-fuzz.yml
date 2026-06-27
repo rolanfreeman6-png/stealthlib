@@ -30,7 +30,7 @@ jobs:
             -DSTEALTH_BUILD_BENCHMARK=OFF \
             -DSTEALTH_BUILD_FIXTURES=OFF \
             -DSTEALTH_BUILD_FUZZER=ON \
-            -DSTEALTH_FUZZ_FLAGS="-fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer" \
+            -DSTEALTH_FUZZ_FLAGS="-fsanitize=fuzzer,address,undefined;-fno-sanitize-recover=all;-fno-omit-frame-pointer" \
             -DSTEALTH_LIBFUZZER_LINKED=ON
       - name: Build fuzz target
         run: cmake --build build --target ${{ matrix.target }} --parallel

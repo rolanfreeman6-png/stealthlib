@@ -11,23 +11,31 @@ hash-based API resolution and anti-debug signal suite in one drop-in bundle.
 
 ---
 
-## Quality scorecard (honest, validated on Linux GCC 15.2)
+## Quality scorecard (honest, per-platform)
 
-| Dimension | Score | What it means in practice |
-| --- | --- | --- |
-| **Correctness** | **9.3 / 10** | **9/9 ctests pass** under `-Wall -Wextra -Wpedantic -Wshadow -Werror`; ASan + UBSan clean (Debug build); deterministic builds (byte-identical SHA256 with same `STEALTH_BUILD_KEY`); plaintext `S("...")` literals do not appear in `.rodata`; 4 FIPS-180-4 SHA-256 Known-Answer vectors pass byte-exact; libFuzzer harness `LLVMFuzzerTestOneInput` defined for CI adversarial runs |
-| **Uniqueness** | **7.5 / 10** | Real "no win32 API strings" killer feature works; anti-debug signal suite > xorstr; IAT/EAT integrity basic hdr-only libs; **anti-VM suite (cpuid + DMI/registry) shipped**; **SHA-256 inline-hook fingerprint with FIPS-180-4 ground truth shipped**; **build-time encryption rotation ships** (16 variants per `STEALTH_BUILD_KEY % 16`) |
-| **Simplicity** | **8.0 / 10** | Single header, `#include "stealthlib/stealth.hpp"`; no link deps; ~1722 LoC; small primitives that compose |
+A single headline score is intentionally **not** published until every
+platform below is ✓ or explicitly not-supported. (Publishing one earlier
+would be aspirational — which is exactly what v2.1.2's `9.3/10` was: MSVC
+did not build at all.) What is actually verified:
 
-**Quality matrix all green on Linux GCC 15.2:**
+| Platform | Status |
+| --- | --- |
+| Linux GCC (strict `-Werror`, ASan+UBSan) | ✓ ctest 14/14, quickverify 7/7 PASS, deterministic builds, 4× FIPS-180-4 SHA-256 KAT byte-exact, `.rodata` plaintext-elision verified, TSan 100× clean |
+| Windows MSVC 2022 (VS generator, `/W4`) | ✓ **18/18 ctest green, zero warnings**, `.rodata` plaintext-elision verified via `consteval` ctor — verified locally; CI green pending push |
+| Windows Clang-cl (`/W4`) | ✓ header compiles clean — verified locally; full ctest pending CI |
+| Linux Clang | unverified locally (CI `linux-clang` job) |
+| macOS Clang (arm64) | unverified locally (CI `macos.yml` job) |
+| ARM64 / non-x86 | not supported — `rdtsc`/`cpuid` return 0 on other arches |
+| Coverage (lcov, Linux) | ✓ 94.6% line (423/447), 99.4% functions (307/309), 90.43% branches executed (gcov) |
+| TSan contract | ✓ clean harness 100/100 runs zero races; adversarial probe catches race (contract proven real) |
+| cppcheck (`--enable=all`) | ✓ 0 errors, 0 performance, 0 real warnings |
+| clang-tidy-18 | ✓ 974 shown / 116507 suppressed; 2 real `bugprone` findings (out-of-scope cleanup) |
+| Windows MSVC `/analyze` | ✓ our code zero unsuppressed warnings (1 residual in SDK `winreg.h`) |
 
-```
-ctest --output-on-failure                                  : 9/9 PASS
-ctest (ASan + UBSan, Debug, GCC 15.2 strict-warnings)      : 9/9 PASS
-ctest (strict -Werror -Wshadow)                            : 9/9 PASS
-deterministic builds                                      : byte-identical SHA256 across rebuilds
-libFuzzer harness                                          : fuzz_hashes exit=0 over seed corpus
-```
+ThreadSanitizer: the contract-respecting harness
+(`tests/test_concurrent_decrypt.cpp`) is TSan-clean by construction; the
+adversarial race probe is opt-in (`-DSTEALTH_ADVERSARIAL_RACE_PROBE`).
+See `docs/THREADING.md` for the full threading contract (Variant B).
 
 > **Important macro note.** `S("…")` is a preprocessor macro. The preprocessor
 > will not expand namespace-qualified identifiers, so `stealth::S(…)`
@@ -241,7 +249,7 @@ if (stealth::memory::compare_constant_time(a, b, 11)) { /* match (timing-side-ch
 
 ## Product positioning: кому это нужно
 
-StealthLib v2.1.1 — coherent Windows-hardening bundle поставляемый как
+StealthLib v2.1.2 — coherent Windows-hardening bundle поставляемый как
 **один header ~1700 LoC без зависимостей**.
 
 ### Назначение каждой части и кому она нужна
@@ -288,7 +296,7 @@ StealthLib v2.1.1 — coherent Windows-hardening bundle поставляемый
 
 | Category | Что важно | xorstr | obfuscate.h | Mist-xorstr | **stealthlib** |
 | --- | --- | :-: | :-: | :-: | :-: |
-| **Minified size** | headers less than 50KB включены | YES (10 KB) | YES | YES | NO (1722 LoC) |
+| **Minified size** | headers less than 50KB включены | YES (10 KB) | YES | YES | NO (1726 LoC) |
 | **Single-job mastery** | Pure XOR string obfuscation | ★★★★★ | ★★★★ | ★★ | ★★★ |
 | **Decryption speed** | SIMD runtime decryption | ★★★★ | ★★★ | ★★ | ★ (per-byte) |
 | **Build-pipeline integration** | CMake generates per-release keys | NO | NO | NO | **★★★★** |

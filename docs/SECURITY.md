@@ -1,7 +1,7 @@
 # Security Policy and Threat Model for StealthLib
 
 **Project:** StealthLib  
-**Version:** 1.0.0 (pre-release)  
+**Version:** v2.1.2  
 **Scope:** `stealthlib/stealth.hpp` and the public API documented in `README.md` and `docs/INSTALL.md`.
 
 ---

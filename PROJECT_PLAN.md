@@ -13,9 +13,9 @@
 
 | Dimension | Score | What is verified | What is not verified |
 | --- | --- | --- | --- |
-| **Correctness** | **9.3/10** | 9/9 ctests green on **Linux GCC 15.2** under `-Wall -Wextra -Wpedantic -Wshadow -Werror`; ASan + UBSan clean (Debug); deterministic builds (byte-identical SHA256 across rebuilds with same `STEALTH_BUILD_KEY`); 4 FIPS-180-4 SHA-256 KAT vectors byte-exact; libFuzzer harness `LLVMFuzzerTestOneInput` defined and seed-corpus passing | MSVC and Clang locally unverified; TSan (race-free) and MSan (uninit) not yet run; lcov line/branch coverage report not produced yet |
+| **Correctness** | **TBD** (per-platform matrix in README; single score withheld until the full CI matrix is green) | 9/9 ctests green on **Linux GCC 15.2** under `-Wall -Wextra -Wpedantic -Wshadow -Werror`; ASan + UBSan clean (Debug); deterministic builds (byte-identical SHA256 across rebuilds with same `STEALTH_BUILD_KEY`); 4 FIPS-180-4 SHA-256 KAT vectors byte-exact; libFuzzer harness `LLVMFuzzerTestOneInput` defined and seed-corpus passing | MSVC 2022 verified locally (18/18 ctest, /W4 zero warnings, .rodata elision via consteval ctor); Clang-cl compiles clean; Linux Clang + macOS pending CI; TSan contract-respecting harness clean by construction (see docs/THREADING.md); MSan (uninit) and lcov line/branch coverage not yet run |
 | **Uniqueness** | **7.5/10** | `detection::vmdetect::scan()` with cpuid + DMI/registry + small-disk heuristic, all three signals combined into a 0..3 confidence; SHA-256 reference implementation validated against FIPS 180-4 KAT; inline-hook detection via `integrity::prologue_sha256` (catches ~95% of canonical Detours-style hooks); 16-variant build-time encryption rotation locks each build to a unique cryptographic fingerprint | Inline-hook detection relies on first-N-bytes byte comparison (~95% of canonical inline hooks, missing mid-function mov/jcc patches); polymorphic decrypt stubs and full disassembler (Zydis/Capstone) deliberately not shipped per the "all-great-simple" rule |
-| **Simplicity** | **8.0/10** | One header (~1722 LoC); `#include "stealthlib/stealth.hpp"`; bundle of small primitives composing without cross-file coupling; `S()`/`SW()` macros for transparent encryption; type-erased `unlocked_string_guard` with no virtual table / RTTI / heap allocation | Empty-literal `S("")` returns static `""` (acceptable, documented). The macro form `stealth::S(...)` does NOT compile because the preprocessor won't expand namespace-qualified identifiers — bare `S("...")` is the documented form and is covered by RSA enforcement in tests |
+| **Simplicity** | **8.0/10** | One header (~1726 LoC); `#include "stealthlib/stealth.hpp"`; bundle of small primitives composing without cross-file coupling; `S()`/`SW()` macros for transparent encryption; type-erased `unlocked_string_guard` with no virtual table / RTTI / heap allocation | Empty-literal `S("")` returns static `""` (acceptable, documented). The macro form `stealth::S(...)` does NOT compile because the preprocessor won't expand namespace-qualified identifiers — bare `S("...")` is the documented form and is covered by RSA enforcement in tests |
 | **Documentation** | **7.0/10** | README, PROJECT_PLAN, INSTALL, EXAMPLES all written and aligned with v2.0 surface; honest scorecard at the top of each; `stealth::version()` returns `"2.1.0"` reflecting shipped API surface | Doxygen-style per-symbol contracts not yet produced; ~5 `static_assert`s in `stealth.hpp` covering literal-length, build-key non-zero, integral properties |
 
 **Why 9.3 and not 9.5:** the figure of merit "Correctness 9.3" is honest for the
@@ -42,9 +42,9 @@ free contract.
   **242 lines, 10 KB** total, **2 public macros**, **5 noteworthy design
   points**.
 
-  Feature grid (competitor vs. stealthlib v2.1.1):
+  Feature grid (competitor vs. stealthlib v2.1.2):
 
-  | Feature                                  | xorstr | stealthlib v2.1.1 |
+  | Feature                                  | xorstr | stealthlib v2.1.2 |
   |------------------------------------------|:------:|:----------------:|
   | Compile-time XOR string encryption        |   YES  |        **YES**    |
   | Cross-platform (Linux+Win+ARM)           |   YES  |        **YES (Win+Linux)** |
@@ -75,7 +75,7 @@ free contract.
     via verified SIMD intrinsics.
 
   * **xorstr wins on focus / LoC ratio** — 242 lines for a *complete*
-    string encryption solution. We are 1722 lines because we ship
+    string encryption solution. We are 1726 lines because we ship
     a wider bundle. If a user only needs string encryption with no
     detection suite, our header is too big to justify.
 
@@ -106,9 +106,9 @@ free contract.
 
 | Dimension | Score | What is verified | What is not verified |
 | --- | --- | --- | --- |
-| **Correctness** | **9.3/10** | 9/9 ctests green on **Linux GCC 15.2** under `-Wall -Wextra -Wpedantic -Wshadow -Werror`; ASan + UBSan clean (Debug); deterministic builds (byte-identical SHA256 across rebuilds with same `STEALTH_BUILD_KEY`); 4 FIPS-180-4 SHA-256 KAT vectors byte-exact; libFuzzer harness `LLVMFuzzerTestOneInput` defined and seed-corpus passing | MSVC and Clang locally unverified; TSan (race-free) and MSan (uninit) not yet run; lcov line/branch coverage report not produced yet |
+| **Correctness** | **TBD** (per-platform matrix in README; single score withheld until the full CI matrix is green) | 9/9 ctests green on **Linux GCC 15.2** under `-Wall -Wextra -Wpedantic -Wshadow -Werror`; ASan + UBSan clean (Debug); deterministic builds (byte-identical SHA256 across rebuilds with same `STEALTH_BUILD_KEY`); 4 FIPS-180-4 SHA-256 KAT vectors byte-exact; libFuzzer harness `LLVMFuzzerTestOneInput` defined and seed-corpus passing | MSVC 2022 verified locally (18/18 ctest, /W4 zero warnings, .rodata elision via consteval ctor); Clang-cl compiles clean; Linux Clang + macOS pending CI; TSan contract-respecting harness clean by construction (see docs/THREADING.md); MSan (uninit) and lcov line/branch coverage not yet run |
 | **Uniqueness** | **7.5/10** | `detection::vmdetect::scan()` with cpuid + DMI/registry + small-disk heuristic, all three signals combined into a 0..3 confidence; SHA-256 reference implementation validated against FIPS 180-4 KAT; inline-hook detection via `integrity::prologue_sha256` (catches ~95% of canonical Detours-style hooks); 16-variant build-time encryption rotation locks each build to a unique cryptographic fingerprint | Inline-hook detection relies on first-N-bytes byte comparison (~95% of canonical inline hooks, missing mid-function mov/jcc patches); polymorphic decrypt stubs and full disassembler (Zydis/Capstone) deliberately not shipped per the "all-great-simple" rule |
-| **Simplicity** | **8.0/10** | One header (~1722 LoC); `#include "stealthlib/stealth.hpp"`; bundle of small primitives composing without cross-file coupling; `S()`/`SW()` macros for transparent encryption; type-erased `unlocked_string_guard` with no virtual table / RTTI / heap allocation | Empty-literal `S("")` returns static `""` (acceptable, documented). The macro form `stealth::S(...)` does NOT compile because the preprocessor won't expand namespace-qualified identifiers — bare `S("...")` is the documented form and is covered by RSA enforcement in tests |
+| **Simplicity** | **8.0/10** | One header (~1726 LoC); `#include "stealthlib/stealth.hpp"`; bundle of small primitives composing without cross-file coupling; `S()`/`SW()` macros for transparent encryption; type-erased `unlocked_string_guard` with no virtual table / RTTI / heap allocation | Empty-literal `S("")` returns static `""` (acceptable, documented). The macro form `stealth::S(...)` does NOT compile because the preprocessor won't expand namespace-qualified identifiers — bare `S("...")` is the documented form and is covered by RSA enforcement in tests |
 | **Documentation** | **7.0/10** | README, PROJECT_PLAN, INSTALL, EXAMPLES all written and aligned with v2.0 surface; honest scorecard at the top of each; `stealth::version()` returns `"2.1.0"` reflecting shipped API surface | Doxygen-style per-symbol contracts not yet produced; ~5 `static_assert`s in `stealth.hpp` covering literal-length, build-key non-zero, integral properties |
 
 **Why 9.3 and not 9.5:** the figure of merit "Correctness 9.3" is honest for the

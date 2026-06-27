@@ -1,7 +1,7 @@
 # StealthLib Hardening Report
 
 **Date:** 2026-06-24  
-**Version:** 1.0.0 (pre-release)  
+**Version:** v2.1.2  
 **Repository:** https://github.com/rolanfreeman6-png/stealthlib  
 **Scope:** `stealthlib/stealth.hpp`, CMake/CI, tests, documentation, public API surface.
 
@@ -260,4 +260,4 @@ StealthLib has moved from a flawed PoC to a defensible pre-release hardening lib
 
 ---
 
-*Report generated as part of the StealthLib 1.0.0 pre-release hardening effort.*
+*Report generated as part of the StealthLib v2.1.2 hardening effort.*

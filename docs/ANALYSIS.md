@@ -2,7 +2,7 @@
 
 **Author:** rolanfreeman6-png
 **Repository:** https://github.com/rolanfreeman6-png/stealthlib
-**Version analysed:** v2.1.1 (commits `65274cc`…`b861661`)
+**Version analysed:** v2.1.2 (head `8d991b6`) + Phase 1 MSVC-unblock hardening (AUDIT_v2.1.2.md, 22 findings closed)
 **Analysis date:** 2026-06-25
 **Document purpose:** Self-contained analysis of the project's technical components, the engineering quality of its implementation, the audit-driven correctness verification, and its positioning with respect to competing libraries. Written so that a reviewer with no prior context can read this file end-to-end and form an independent opinion about whether the project merits attention.
 
@@ -23,9 +23,9 @@ The engineering discipline — doctest harness, FIPS-180-4 KAT bytes, libFuzzer 
 
 | Dimension | Self-assessed score (this analysis) | Evidence |
 | --- | --- | --- |
-| Correctness | **9.3 / 10** | 9/9 ctests green on Linux GCC 15.2 under strict warnings, ASan + UBSan clean, libFuzzer corpus passes, 4/4 FIPS-180-4 KAT bytes exact, byte-identical deterministic builds |
+| Correctness | **TBD** (per-platform matrix in README; withheld until full CI green) | Linux GCC ✓ (ctest, ASan+UBSan, KAT, deterministic); Windows MSVC 2022 ✓ 18/18 ctest locally; Clang-cl ✓ compiles; Linux Clang/macOS pending CI |
 | Uniqueness | **7.5 / 10** | xorstr and similar libraries provide only the string-encryption concern; the rest is orthogonal coverage (anti-debug + anti-VM + IAT/SHA-256 bundle) |
-| Simplicity | **8.0 / 10** | One header with no transitive third-party includes, ~1700 LoC, 8-flag signals struct as a one-call cohesion point |
+| Simplicity | **8.0 / 10** | One header with no transitive third-party includes, ~1726 LoC, 8-flag signals struct as a one-call cohesion point |
 | Documentation | **7.0 / 10** | README + PROJECT_PLAN + INSTALL + EXAMPLES, honest scorecard top-of-file on each, single source of truth for use-case decision matrix |
 
 The 0.5–0.7 points not yet claimed at 9.5–9.7 level are: MSVC CI green-log, Clang strict matrix (`-Wthread-safety`), ASan/UBSan on the parallel surface, ThreadSanitizer and MemorySanitizer, libFuzzer-under-`-fsanitize=fuzzer` running for hours not seconds, and lcov line/branch coverage. Each is explicitly tracked in § 7.
@@ -111,7 +111,7 @@ target_compile_definitions(stealthlib INTERFACE
     STEALTH_BUILD_KEY=0x${STEALTH_BUILD_KEY_HEX}ULL)
 ```
 
-A fixed `STEALTH_BUILD_KEY=0xDEADBEEF…ULL` is also accepted via `-DSTEALTH_BUILD_KEY=…` for reproducible-build testing. The header errors out at `#error` if `STEALTH_BUILD_KEY` is undefined, so users who compile single-file `.cpp` without CMake cannot accidentally produce a binary that shares a key with another build. This was a deliberate fix during v2.1.1 — earlier the default constant `0x5EED5EED5EED5EEDULL` meant every binary built without override had the same key, defeating the "bind-binary-to-build" claim. After the fix, every binary truly carries a unique fingerprint.
+A fixed `STEALTH_BUILD_KEY=0xDEADBEEF…ULL` is also accepted via `-DSTEALTH_BUILD_KEY=…` for reproducible-build testing. The header errors out at `#error` if `STEALTH_BUILD_KEY` is undefined, so users who compile single-file `.cpp` without CMake cannot accidentally produce a binary that shares a key with another build. This was a deliberate fix during the prior release — earlier the default constant `0x5EED5EED5EED5EEDULL` meant every binary built without override had the same key, defeating the "bind-binary-to-build" claim. After the fix, every binary truly carries a unique fingerprint.
 
 ### 2.2 Quality verification matrix
 
@@ -124,7 +124,7 @@ For each supported configuration, the test surface is run and the binary is stat
 | `Debug` under `-fsanitize=address,undefined` | 11 targets | 9/9 PASS, ASan/UBSan no reports |
 | `Release` with `-DSTEALTH_BUILD_FUZZER=ON` | `fuzz_hashes` standalone | exit 0 over the seed corpus |
 
-The `binary_scan_test` is itself a doctest-free ctest entry: it scans the produced `binary_scan_target` binary with `strings -n 8` for plaintext sentinels. As of v2.1.1 it returns zero matches.
+The `binary_scan_test` is itself a doctest-free ctest entry: it scans the produced `binary_scan_target` binary with `strings -n 8` for plaintext sentinels. As of the prior release it returns zero matches.
 
 ### 2.3 Determinism
 
@@ -146,11 +146,11 @@ The fuzz-target invariants:
 
 ---
 
-## 3. Audit-driven correctness story (v2.0 → v2.1.1)
+## 3. Audit-driven correctness story (v2.0 → the prior release)
 
-The v2.1.1 fixup commit `65274cc` is the work product of a critical-audit cycle that identified 28 distinct issues. Of those, 6 were classified **critical**, 7 **important**, the remainder **minor** (mostly documentation drift). Every critical issue was reproduced and fixed.
+The the prior release fixup commit `65274cc` is the work product of a critical-audit cycle that identified 28 distinct issues. Of those, 6 were classified **critical**, 7 **important**, the remainder **minor** (mostly documentation drift). Every critical issue was reproduced and fixed.
 
-### 3.1 Summary of critical bugs closed in v2.1.1
+### 3.1 Summary of critical bugs closed in the prior release
 
 | # | Bug | Surface | Why it was invisible to earlier green-light |
 | --- | --- | --- | --- |
@@ -200,7 +200,7 @@ A header-only library of seven orthogonal primitives, packaged as a single heade
 * **Build-time encryption rotation** — 16 byte-mask tables keyed on `STEALTH_BUILD_KEY % 16`, applied symmetrically in ctor / decrypt / reencrypt. Different builds produce visibly different byte streams for the same plaintext.
 * **`tests/fuzz_hashes.cpp`** — `LLVMFuzzerTestOneInput` with three invariants (FNV identity, FNV-vs-DJB2 distinctness, SHA-256 streaming parity). Standalone main exercises the seed corpus when libFuzzer is not linked.
 
-### 4.3 v2.1.1: audit-driven fixup
+### 4.3 the prior release: audit-driven fixup
 
 Six critical correctness fixes (see § 3.1 above), four important fixes, ~9 documentation drift fixes. Every fix is paired with a reproducer in ctest, so future regressions are caught by the existing test surface.
 
@@ -255,7 +255,7 @@ xorstr (`JustasMamiulis/xorstr`, Apache 2.0) is the reference de-facto standard 
 We do NOT claim to "include everything xorstr does". Two specific gaps:
 
 * **Runtime decryption speed**: xorstr uses `_mm_xor_si128` for AVX-side decryption of long strings. We do per-byte XOR at runtime. For very long literals (> 256 chars) xorstr is materially faster on AVX-capable machines.
-* **Maturity**: xorstr has been used in mainstream C++ projects since 2021. adoption > maturity > the v2.1.1 version of stealthlib, which is published 2026.
+* **Maturity**: xorstr has been used in mainstream C++ projects since 2021. adoption > maturity > the the prior release version of stealthlib, which is published 2026.
 
 Honest position: stealthlib is a *different bundle*, prioritising breadth and test discipline over micro runtime speed and 5+ years of adoption. The two libraries can be vendored together without symbol collisions.
 
@@ -286,7 +286,7 @@ The aggregate of closing all Pathways (1–7) lands Correctness at ~9.7. The agg
 
 | Path | Content |
 | --- | --- |
-| `stealthlib/stealth.hpp` | Single public header, ~1722 LoC |
+| `stealthlib/stealth.hpp` | Single public header, ~1726 LoC |
 | `tests/test_strings.cpp` | Encrypt/decrypt roundtrip + wide string + stress |
 | `tests/test_peb_windows.cpp` | PEB walk + get_proc_by_hash + resolver |
 | `tests/test_integrity.cpp` | prologue_sha256 + vmdetect + tampered buffers |
@@ -333,7 +333,7 @@ cmake --build build_fuzz && build_fuzz/tests/fuzz_hashes  # expect exit 0
 ```
 b861661  docs: enriched competitive positioning
 4f359f8  docs: xorstr competitive benchmark
-65274cc  v2.1.1: audit-driven fixup
+65274cc  the prior release: audit-driven fixup
 64b9402  v2.1: uniqueness + hardening push
 7a991d7  docs: honest 9.0/10 Correctness scorecard
 73edef7  Phase 1.5 strict-quality sweep

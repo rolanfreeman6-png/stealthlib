@@ -1,4 +1,5 @@
 @echo off
-call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\vcvars64.bat"
-cd C:\Users\asad\stealthlib
-cl.exe /std:c++20 /EHsc /W4 /I./stealthlib examples/full_demo.cpp /Fe:build/full_demo.exe
+REM StealthLib quick-compile helper (MSVC). Run from project root.
+REM Uses CMake-generated STEALTH_BUILD_KEY if available, else a fixed key.
+if not defined STEALTH_BUILD_KEY set STEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
+cl.exe /nologo /std:c++20 /EHsc /W4 /I. /DSTEALTH_BUILD_KEY=%STEALTH_BUILD_KEY% examples/full_demo.cpp /Fe:build\full_demo.exe /link user32.lib

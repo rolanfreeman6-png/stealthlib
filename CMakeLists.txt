@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(StealthLib VERSION 2.0.0 LANGUAGES CXX)
+project(StealthLib VERSION 2.1.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -67,8 +67,8 @@ if(STEALTH_CLANG_TIDY)
     if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         message(WARNING "STEALTH_CLANG_TIDY=ON requested but compiler is not Clang/GCC; skipping.")
     else()
-        set(CMAKE_CXX_CLANG_TIDY "clang-tidy;-checks=bugprone-*,performance-*,portability-*,readability-*,modernize-*,-bugprone-easily-swappable-parameters,-readability-magic-numbers,-readability-isolate-declaration,-readability-identifier-length")
-        message(STATUS "Clang-Tidy enabled: ${CMAKE_CXX_CLANG_TIDY}")
+        set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
+        message(STATUS "Clang-Tidy enabled (uses .clang-tidy config file)")
     endif()
 endif()
 
@@ -141,17 +141,31 @@ endif()
 
 # --- Install --------------------------------------------------------------
 
+include(CMakePackageConfigHelpers)
+
 install(TARGETS stealthlib EXPORT stealthlib-targets)
 install(FILES
     ${STEALTHLIB_HEADER_DIR}/stealth.hpp
     DESTINATION include/stealthlib
 )
-# Ensure installed target exposes the include subfolder so that
-# "#include \"stealthlib/stealth.hpp\"" works after install.
 install(EXPORT stealthlib-targets
     FILE stealthlib-targets.cmake
     NAMESPACE stealthlib::
     DESTINATION lib/cmake/stealthlib
 )
-# Re-export under the top-level binary directory too for in-tree consumption.
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/stealthlib-config.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/stealthlib-config.cmake
+    INSTALL_DESTINATION lib/cmake/stealthlib
+)
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/stealthlib-config-version.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/stealthlib-config.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/stealthlib-config-version.cmake
+    DESTINATION lib/cmake/stealthlib
+)
 export(EXPORT stealthlib-targets FILE "${CMAKE_CURRENT_BINARY_DIR}/stealthlib-targets.cmake")

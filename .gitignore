@@ -37,3 +37,13 @@ Thumbs.db
 # Misc
 *.log
 *.tmp
+
+# Coverage artifacts
+*.gcno
+*.gcda
+*.gcov
+*.info
+coverage_html/
+build_lcov/
+build_cov/
+build_gcov/

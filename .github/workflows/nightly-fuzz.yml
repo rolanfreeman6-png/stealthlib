@@ -1,0 +1,41 @@
+name: nightly-fuzz
+
+# Long-running libFuzzer sweep over the public API. NOT in the per-push CI
+# (too slow); runs nightly and on manual dispatch. Zero crashes is the
+# acceptance bar (Phase 2, Step 2.5).
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    name: libFuzzer ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [fuzz_hashes, fuzz_strings, fuzz_decoders]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang + cmake
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build
+      - name: Configure
+        run: |
+          mkdir build
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DSTEALTH_BUILD_TESTS=ON \
+            -DSTEALTH_BUILD_EXAMPLES=OFF \
+            -DSTEALTH_BUILD_BENCHMARK=OFF \
+            -DSTEALTH_BUILD_FIXTURES=OFF \
+            -DSTEALTH_BUILD_FUZZER=ON
+      - name: Build fuzz target
+        run: cmake --build build --target ${{ matrix.target }} --parallel
+        env:
+          # -fsanitize=fuzzer provides libFuzzer's main(); address+undefined
+          # catch OOB/UAF and UB in the fuzzed paths.
+          STEALTH_FUZZ_FLAGS: "-fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
+      - name: Run fuzz (10 min per target)
+        run: |
+          ./build/tests/${{ matrix.target }} -max_total_time=600 -print_final_stats=1

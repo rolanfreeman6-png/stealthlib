@@ -1,0 +1,47 @@
+# StealthLib clang-tidy configuration (Phase 2, Step 2.1)
+# Run: clang-tidy -p <build-dir-with-compile_commands.json> <file>
+# Expectation per plan: <5 honest findings (rest suppressed with rationale).
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  cppcoreguidelines-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  modernize-*,
+  clang-analyzer-*,
+  misc-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-type-cstyle-cast,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -readability-magic-numbers,
+  -readability-isolate-declaration,
+  -readability-identifier-length,
+  -readability-function-cognitive-complexity,
+  -modernize-use-trailing-return-type,
+  -modernize-use-nodiscard,
+  -misc-no-recursion,
+  -fuchsia-*,
+  -google-*,
+  -llvmlibc-*,
+  -altera-*,
+  -llvm-header-guard,
+  -hicpp-*,
+  -cppcoreguidelines-avoid-do-while
+# Rationale: StealthLib is a header-only PE/integrity/detection library.
+# Pointer arithmetic, reinterpret_cast over PE structs, magic byte offsets
+# (cite-or-die'd in source comments per the project's PE-layout spec), and
+# fixed-width byte manipulation are inherent to the domain, so the
+# corresponding cppcoreguidelines/bound checks are suppressed project-wide
+# rather than per-line. Narrowing conversions are suppressed because the
+# build already enforces -Wconversion/-Wshadow under the strict-warnings CI
+# job; clang-tidy would duplicate that signal noisily.
+WarningsAsErrors: ''
+HeaderFilterRegex: 'stealthlib/stealth\.hpp'
+FormatStyle: file

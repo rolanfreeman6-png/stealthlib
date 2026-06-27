@@ -4,8 +4,8 @@
 
 #define STEALTH_VERSION_MAJOR 2
 #define STEALTH_VERSION_MINOR 1
-#define STEALTH_VERSION_PATCH 0
-#define STEALTH_VERSION_STRING "2.1.0"
+#define STEALTH_VERSION_PATCH 2
+#define STEALTH_VERSION_STRING "2.1.2"
 
 #include <cstdint>
 #include <cstddef>
@@ -24,6 +24,10 @@
 
 #if defined(__SSE2__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(_M_X64)
 #include <emmintrin.h>
+#endif
+
+#if defined(_MSC_VER)
+#include <intrin.h>
 #endif
 
 #ifdef _WIN32
@@ -198,20 +202,21 @@ template<size_t N, size_t Idx>
 struct encrypted_string_impl {
     char encrypted[N]{};
     char buffer[N + 1]{};
-    // `decrypted` is accessed via GCC/Clang __atomic_* builtins below so
-    // that concurrent decrypt()/reencrypt() calls (e.g. the same literal
-    // evaluated by two threads simultaneously) do not race on the flag in
-    // a TSan-visible way. std::atomic<bool> would also work, but it makes
-    // the struct non-literal in C++20, which kills the constexpr ctor --
-    // and the constexpr ctor is what eliminates the plaintext from .rodata
-    // (verified by tests/binary_scan.cmake). The __atomic_* builtins are
-    // emitted by the compiler as acquire/release-fenced operations and are
-    // seen by TSan as proper synchronization without changing the layout.
+    // `decrypted` is a plain (non-atomic) lazy-init flag. This struct is a
+    // literal type so the constexpr ctor can consume the source literal at
+    // translation time, eliminating plaintext from .rodata (verified by
+    // tests/binary_scan.cmake). std::atomic<bool> would make it non-literal
+    // and reintroduce the leak; GCC/Clang __atomic_* builtins are non-portable
+    // (absent on MSVC) and only ever fenced the flag, not buffer[]/encrypted[].
+    // Threading contract (Variant B, see docs/THREADING.md): each instance
+    // MUST be confined to a single thread; concurrent decrypt()/reencrypt()
+    // on the SAME instance is a data race (UB). The flag only guards
+    // single-thread double-decrypt and provides NO cross-thread sync.
     bool decrypted{false};
 
     // Constexpr array-reference ctor ONLY.
     template<size_t M>
-    constexpr encrypted_string_impl(const char (&src)[M]) noexcept
+    consteval encrypted_string_impl(const char (&src)[M]) noexcept
         : decrypted(false) {
         static_assert(M == N + 1, "StealthLib: literal length mismatch");
         // Build-time encryption rotation: pick one of 16 byte-mask
@@ -233,10 +238,9 @@ struct encrypted_string_impl {
     }
 
     const char* decrypt() noexcept {
-        // __ATOMIC_ACQUIRE pairs with the __ATOMIC_RELEASE below. TSan sees
-        // this as proper synchronization; on x86_64 both orderings compile
-        // down to plain mov (x86 TSO), with the fence only if needed.
-        if (!__atomic_load_n(&decrypted, __ATOMIC_ACQUIRE)) {
+        // Lazy decrypt: fill buffer[] once, then cache via `decrypted`.
+        // Single-thread only -- see the Variant B contract above.
+        if (!decrypted) {
 #if STEALTHLIB_SSE2_DECRYPT && (defined(__SSE2__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(_M_X64))
             // SSE2 fast path. The 16-byte keystream repeats every 16 bytes
             // (because `(i & 0x0F)` and `derive_byte(Idx, i % 8, ...)` only
@@ -288,7 +292,7 @@ struct encrypted_string_impl {
                     buffer[i] = static_cast<char>(b);
                 }
                 buffer[N] = '\0';
-                __atomic_store_n(&decrypted, true, __ATOMIC_RELEASE);
+                decrypted = true;
                 return buffer;
             }
 #endif // STEALTHLIB_SSE2_DECRYPT
@@ -304,7 +308,7 @@ struct encrypted_string_impl {
                 buffer[i] = static_cast<char>(b);
             }
             buffer[N] = '\0';
-            __atomic_store_n(&decrypted, true, __ATOMIC_RELEASE);
+            decrypted = true;
         }
         return buffer;
     }
@@ -315,7 +319,7 @@ struct encrypted_string_impl {
 #endif
 
     void reencrypt() noexcept {
-        if (__atomic_load_n(&decrypted, __ATOMIC_ACQUIRE)) {
+        if (decrypted) {
 #if STEALTHLIB_SSE2_DECRYPT && (defined(__SSE2__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(_M_X64))
             // SSE2 fast path mirrors decrypt() above: same keystream, but
             // the operation is its own inverse (XOR c ^= k twice = identity),
@@ -365,7 +369,7 @@ struct encrypted_string_impl {
                 for (size_t j = 0; j < N + 1; ++j) {
                     reinterpret_cast<volatile char*>(&buffer[j])[0] = 0;
                 }
-                __atomic_store_n(&decrypted, false, __ATOMIC_RELEASE);
+                decrypted = false;
                 return;
             }
 #endif // STEALTHLIB_SSE2_DECRYPT
@@ -386,7 +390,7 @@ struct encrypted_string_impl {
             for (size_t i = 0; i < N + 1; ++i) {
                 reinterpret_cast<volatile char*>(&buffer[i])[0] = 0;
             }
-            __atomic_store_n(&decrypted, false, __ATOMIC_RELEASE);
+            decrypted = false;
         }
     }
 
@@ -397,16 +401,14 @@ struct encrypted_string_impl {
 
 template<size_t N, size_t Idx>
 struct encrypted_wstring_impl {
-    // See encrypted_string_impl for the rationale behind the __atomic_*
-    // builtins instead of std::atomic<bool>: this struct must remain a
-    // literal type so that the constexpr ctor can consume the source
-    // literal at translation time, eliminating plaintext from .rodata.
+    // Same literal-type + threading contract as encrypted_string_impl
+    // (Variant B, docs/THREADING.md): single-thread confined, plain bool.
     wchar_t encrypted[N]{};
     wchar_t buffer[N + 1]{};
     bool decrypted{false};
 
     template<size_t M>
-    constexpr encrypted_wstring_impl(const wchar_t (&src)[M]) noexcept
+    consteval encrypted_wstring_impl(const wchar_t (&src)[M]) noexcept
         : decrypted(false) {
         static_assert(M == N + 1, "StealthLib: literal length mismatch");
         constexpr uint16_t wmask_table[16] = {
@@ -424,7 +426,7 @@ struct encrypted_wstring_impl {
     }
 
     const wchar_t* decrypt() noexcept {
-        if (!__atomic_load_n(&decrypted, __ATOMIC_ACQUIRE)) {
+        if (!decrypted) {
             constexpr uint16_t wmask_table[16] = {
                 0xA5A5,0xB6B6,0xC7C7,0xD8D8, 0xE9E9,0xFAFA,0x0B0B,0x1C1C,
                 0x2D2D,0x3E3E,0x4F4F,0x5050, 0x6161,0x7272,0x8383,0x9494
@@ -438,7 +440,7 @@ struct encrypted_wstring_impl {
                 buffer[i] = static_cast<wchar_t>(ch);
             }
             buffer[N] = L'\0';
-            __atomic_store_n(&decrypted, true, __ATOMIC_RELEASE);
+            decrypted = true;
         }
         return buffer;
     }
@@ -454,7 +456,7 @@ struct encrypted_wstring_impl {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdangling-pointer"
 #endif
-        if (__atomic_load_n(&decrypted, __ATOMIC_ACQUIRE)) {
+        if (decrypted) {
             constexpr uint16_t wmask_table[16] = {
                 0xA5A5,0xB6B6,0xC7C7,0xD8D8, 0xE9E9,0xFAFA,0x0B0B,0x1C1C,
                 0x2D2D,0x3E3E,0x4F4F,0x5050, 0x6161,0x7272,0x8383,0x9494
@@ -469,7 +471,7 @@ struct encrypted_wstring_impl {
             for (size_t i = 0; i < N + 1; ++i) {
                 reinterpret_cast<volatile wchar_t*>(&buffer[i])[0] = 0;
             }
-            __atomic_store_n(&decrypted, false, __ATOMIC_RELEASE);
+            decrypted = false;
         }
 #if defined(__GNUC__) && __GNUC__ >= 14
 #pragma GCC diagnostic pop
@@ -544,6 +546,9 @@ public:
                   static_cast<encrypted_wstring_impl<S, I>*>(p)->reencrypt();
               })) {}
 
+    unlocked_wstring_guard(const wchar_t* ptr, size_t n, std::nullptr_t) noexcept
+        : ptr_(ptr), n_(n), pool_ptr_(nullptr), reen_(nullptr) {}
+
     ~unlocked_wstring_guard() {
         if (reen_ && pool_ptr_) {
             reen_(pool_ptr_);
@@ -554,6 +559,15 @@ public:
     unlocked_wstring_guard(unlocked_wstring_guard&& o) noexcept
         : ptr_(o.ptr_), n_(o.n_), pool_ptr_(o.pool_ptr_), reen_(o.reen_) {
         o.ptr_ = nullptr; o.n_ = 0; o.pool_ptr_ = nullptr; o.reen_ = nullptr;
+    }
+    unlocked_wstring_guard& operator=(unlocked_wstring_guard&& o) noexcept {
+        if (this != &o) {
+            if (reen_ && pool_ptr_) reen_(pool_ptr_);
+            ptr_ = o.ptr_; n_ = o.n_;
+            pool_ptr_ = o.pool_ptr_; reen_ = o.reen_;
+            o.ptr_ = nullptr; o.n_ = 0; o.pool_ptr_ = nullptr; o.reen_ = nullptr;
+        }
+        return *this;
     }
 
     const wchar_t* c_str() const noexcept { return ptr_; }
@@ -567,7 +581,7 @@ private:
 };
 
 // SHA-256 (FIPS 180-4) — 32-byte digest. Header-only, zero deps, no
-// dynamic allocation. Used by integrity::prologue_fingerprint to
+// dynamic allocation. Used by integrity::prologue_sha256 to
 // compare function prologue bytes against known-good signatures to
 // detect inline hooks.
 struct sha256 {
@@ -677,7 +691,7 @@ struct stealth_encrypted_char {
     detail::encrypted_string_impl<N, Idx> impl;
 
     template<size_t M>
-    constexpr stealth_encrypted_char(const char (&src)[M]) noexcept
+    consteval stealth_encrypted_char(const char (&src)[M]) noexcept
         : impl(src) {
         static_assert(M == N + 1, "StealthLib: literal size mismatch in S()");
     }
@@ -712,7 +726,7 @@ struct stealth_encrypted_wchar {
     detail::encrypted_wstring_impl<N, Idx> impl;
 
     template<size_t M>
-    constexpr stealth_encrypted_wchar(const wchar_t (&src)[M]) noexcept
+    consteval stealth_encrypted_wchar(const wchar_t (&src)[M]) noexcept
         : impl(src) {
         static_assert(M == N + 1, "StealthLib: literal size mismatch in SW()");
     }
@@ -812,6 +826,7 @@ inline std::string hex_encode(const std::string_view& str) noexcept {
 inline std::optional<std::vector<uint8_t>> hex_decode(const std::string_view& str) noexcept;
 
 inline void rot13_encode(void* dst, const void* src, size_t len) noexcept {
+    if (!dst || !src) return;
     const uint8_t* s = static_cast<const uint8_t*>(src);
     uint8_t* d = static_cast<uint8_t*>(dst);
     for (size_t i = 0; i < len; ++i) {
@@ -859,6 +874,7 @@ struct xor_key {
 
 template<size_t KeySize>
 inline void xor_crypt(void* data, size_t len, const xor_key<KeySize>& key) noexcept {
+    if (!data) return;
     uint8_t* d = static_cast<uint8_t*>(data);
     for (size_t i = 0; i < len; ++i) d[i] ^= key[i];
 }
@@ -879,6 +895,7 @@ inline char encode_b64_byte(unsigned char v) noexcept { return b64_alphabet[v & 
 }
 
 inline std::string base64_encode(const void* data, size_t len) noexcept {
+    if (!data) return {};
     const unsigned char* src = static_cast<const unsigned char*>(data);
     std::string result;
     result.reserve((len + 2) / 3 * 4);
@@ -934,6 +951,7 @@ inline std::optional<std::string> base64_decode(const std::string_view& str) noe
     result.reserve(str.size() * 3 / 4);
     const char* s = str.data();
     size_t len_str = str.size();
+    bool ended = false;  // set once a padded group is consumed; data after it is malformed
     for (size_t i = 0; i < len_str; i += 4) {
         int8_t vals[4] = {-1, -1, -1, -1};
         for (size_t j = 0; j < 4; ++j) {
@@ -946,14 +964,23 @@ inline std::optional<std::string> base64_decode(const std::string_view& str) noe
             }
         }
         if (vals[0] < 0 || vals[1] < 0) return std::nullopt;
+        bool pad2 = (s[i + 2] == '=');
+        bool pad3 = (s[i + 3] == '=');
+        // Padding may only occupy the trailing positions of the FINAL
+        // group: '=' in position 2 with data in position 3 (e.g. "AA=A"),
+        // or any data group after a padded group, is malformed input.
+        if (pad2 && !pad3) return std::nullopt;
+        if (ended) return std::nullopt;
         result += static_cast<char>((vals[0] << 2) | (vals[1] >> 4));
-        if (vals[2] >= 0 && s[i + 2] != '=') result += static_cast<char>((vals[1] << 4) | (vals[2] >> 2));
-        if (vals[3] >= 0 && s[i + 3] != '=') result += static_cast<char>((vals[2] << 6) | vals[3]);
+        if (!pad2) result += static_cast<char>((vals[1] << 4) | (vals[2] >> 2));
+        if (!pad3) result += static_cast<char>((vals[2] << 6) | vals[3]);
+        if (pad2 || pad3) ended = true;
     }
     return result;
 }
 
 inline std::string hex_encode(const void* data, size_t len) noexcept {
+    if (!data) return {};
     static const char hex_chars[] = "0123456789ABCDEF";
     const unsigned char* src = static_cast<const unsigned char*>(data);
     std::string result(len * 2, '\0');
@@ -994,6 +1021,7 @@ inline void secure_zero(void* ptr, size_t len) noexcept {
 }
 
 inline bool compare_constant_time(const void* a, const void* b, size_t len) noexcept {
+    if (len > 0 && (!a || !b)) return false;
     const uint8_t* A = static_cast<const uint8_t*>(a);
     const uint8_t* B = static_cast<const uint8_t*>(b);
     uint8_t diff = 0;
@@ -1049,12 +1077,6 @@ inline bool check_remote_debugger() noexcept {
     }
     if (!ntdll) return false;
 
-    auto dosb = reinterpret_cast<uint8_t*>(ntdll);
-    auto pe_off = *reinterpret_cast<uint32_t*>(dosb + 0x3C);
-    auto nt = reinterpret_cast<uint8_t*>(ntdll) + pe_off;
-    auto export_rva = *reinterpret_cast<uint32_t*>(nt + 0x78 + 0x80);
-
-    if (!export_rva) return false;
     // Resolve OptionalHeader.DataDirectory[i] correctly: PE32+ magic
     // (0x20b) puts DataDirectory at nt + 0x88; PE32 magic (0x10b) puts
     // it at nt + 0x78. The original code used `nt + 0x78 + 0x80 = 0xF8`
@@ -1063,16 +1085,19 @@ inline bool check_remote_debugger() noexcept {
     // RVA, OOB memory, or wrong export function lookup on x64.
     auto dos = reinterpret_cast<uint8_t*>(ntdll);
     auto pe_off = *reinterpret_cast<uint32_t*>(dos + 0x3C);
-    auto nt8 = reinterpret_cast<uint8_t*>(ntdll) + pe_off;
+    auto nt8 = dos + pe_off;
     uint16_t magic = *reinterpret_cast<uint16_t*>(nt8 + 0x18);
     std::size_t dd_offset = (magic == 0x20b) ? 0x88 : 0x78;
     uint32_t export_rva = *reinterpret_cast<uint32_t*>(nt8 + dd_offset);
 
     if (!export_rva) return false;
-    auto exp = nt8 + export_rva;
-    auto names = reinterpret_cast<uint32_t*>(nt8 + *reinterpret_cast<uint32_t*>(exp + 0x20));
-    auto ordinals = reinterpret_cast<uint16_t*>(nt8 + *reinterpret_cast<uint32_t*>(exp + 0x24));
-    auto funcs = reinterpret_cast<uint32_t*>(nt8 + *reinterpret_cast<uint32_t*>(exp + 0x1C));
+    // Export-directory RVAs are relative to the image base (dos), not to
+    // the NT headers (nt8). Resolving them off nt8 would misread by
+    // e_lfanew bytes and return garbage on every x64 image.
+    auto exp = dos + export_rva;
+    auto names = reinterpret_cast<uint32_t*>(dos + *reinterpret_cast<uint32_t*>(exp + 0x20));
+    auto ordinals = reinterpret_cast<uint16_t*>(dos + *reinterpret_cast<uint32_t*>(exp + 0x24));
+    auto funcs = reinterpret_cast<uint32_t*>(dos + *reinterpret_cast<uint32_t*>(exp + 0x1C));
     auto n_names = *reinterpret_cast<uint32_t*>(exp + 0x18);
 
     NtQIP_t NtQIP = nullptr;
@@ -1088,7 +1113,7 @@ inline bool check_remote_debugger() noexcept {
             if (a != b) { match = false; break; }
         }
         if (match && name[j] == '\0' && target[j] == '\0') {
-            NtQIP = reinterpret_cast<NtQIP_t>(funcs[ordinals[i]]);
+            NtQIP = reinterpret_cast<NtQIP_t>(dos + funcs[ordinals[i]]);
             break;
         }
     }
@@ -1103,12 +1128,12 @@ inline bool check_remote_debugger() noexcept {
 }
 
 inline uint64_t rdtsc() noexcept {
-#if defined(_M_X64) || defined(__x86_64__)
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+    return __rdtsc();
+#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
     unsigned int lo = 0, hi = 0;
-    __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+    __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
     return (static_cast<uint64_t>(hi) << 32) | lo;
-#elif defined(_M_IX86)
-    __asm rdtsc;
 #else
     return 0;
 #endif
@@ -1158,8 +1183,11 @@ struct signals {
     uint64_t build_key_match;
 
     [[nodiscard]] bool any() const noexcept {
+        // build_key_match is a compile-time snapshot of STEALTH_BUILD_KEY
+        // (set in scan()); it is informational, NOT a runtime tamper signal,
+        // so it is intentionally excluded from the "any debug signal" OR.
         return peb_debug_flag || remote_debugger || timing_anomaly
-            || (hwbp_count > 0) || (build_key_match == 0);
+            || (hwbp_count > 0);
     }
 };
 
@@ -1197,7 +1225,7 @@ inline bool cpuid_hypervisor_present() noexcept {
         : "a"(leaf)
         : "cc");
 #endif
-    (void)b; (void)d;
+    (void)a; (void)b; (void)d;
     return (c & (1u << 31)) != 0;
 #else
     return false;
@@ -1376,11 +1404,13 @@ inline void* get_peb_ptr() noexcept { return nullptr; }
 
 struct UNICODE_STRING_NT { uint16_t Length; uint16_t MaximumLength; wchar_t* Buffer; };
 struct LIST_ENTRY_NT { void* Flink; void* Blink; };
-struct LDR_ENTRY_NT { LIST_ENTRY_NT InLoadOrderLinks; void* DllBase; uint32_t SizeOfImage; UNICODE_STRING_NT BaseDllName; };
+struct LDR_ENTRY_NT { LIST_ENTRY_NT InLoadOrderLinks; LIST_ENTRY_NT InMemoryOrderLinks; LIST_ENTRY_NT InInitializationOrderLinks; void* DllBase; void* EntryPoint; uint32_t SizeOfImage; UNICODE_STRING_NT FullDllName; UNICODE_STRING_NT BaseDllName; };
 struct PEB_LDR_NT { uint32_t Length; uint8_t Initialized; void* SsHandle; LIST_ENTRY_NT InLoadOrderModuleList; };
 struct PEB_STRUCT_NT { uint8_t InheritedAddressSpace; uint8_t ReadImageFileExecOptions; uint8_t BeingDebugged; uint8_t BitField; void* Mutant; void* ImageBaseAddress; PEB_LDR_NT* Ldr; };
 
 inline bool get_module_base(const wchar_t* name, void** out) noexcept {
+    if (!out) return false;
+    *out = nullptr;
     auto peb = reinterpret_cast<PEB_STRUCT_NT*>(get_peb_ptr());
     if (!peb || !peb->Ldr) return false;
     size_t len = 0;
@@ -1413,20 +1443,31 @@ inline bool get_module_base_ansi(const char* name, void** out) noexcept {
 }
 
 inline bool get_module_base_by_hash(uint64_t hash, void** out) noexcept {
+    if (!out) return false;
+    *out = nullptr;
     auto peb = reinterpret_cast<PEB_STRUCT_NT*>(get_peb_ptr());
     if (!peb || !peb->Ldr) return false;
     auto entry = reinterpret_cast<LDR_ENTRY_NT*>(peb->Ldr->InLoadOrderModuleList.Flink);
     while (entry && entry->BaseDllName.Buffer) {
         size_t chrs = entry->BaseDllName.Length / 2;
-        uint64_t h = hashes::fnv(entry->BaseDllName.Buffer, chrs);
+        // Hash the low byte of each UTF-16LE code unit so the digest
+        // matches hashes::fnv("name.dll") (narrow/ASCII) -- the documented
+        // module-hash contract. Loaded module base names are ASCII.
+        uint64_t h = detail::fnv1a_basis;
+        for (size_t i = 0; i < chrs; ++i) {
+            uint8_t c = static_cast<uint8_t>(entry->BaseDllName.Buffer[i] & 0xFFu);
+            if (c >= 'A' && c <= 'Z') c = static_cast<uint8_t>(c + 32);
+            h ^= static_cast<uint64_t>(c);
+            h *= detail::fnv1a_prime;
+        }
         if (h == hash) { *out = entry->DllBase; return true; }
         entry = reinterpret_cast<LDR_ENTRY_NT*>(entry->InLoadOrderLinks.Flink);
     }
     return false;
 }
 
-struct DOS_HEADER_NT { uint16_t e_magic; int32_t e_lfanew; };
-struct NT_HEADERS64_NT { uint32_t Signature; uint8_t Padding[4]; uint16_t Machine; uint16_t NumberOfSections; uint32_t TimeDateStamp; uint32_t PointerToSymbolTable; uint32_t NumberOfSymbols; uint16_t SizeOfOptionalHeader; uint16_t Characteristics; uint16_t Magic; uint8_t MajorLinkerVersion; uint8_t MinorLinkerVersion; uint32_t SizeOfCode; uint32_t SizeOfInitializedData; uint32_t SizeOfUninitializedData; uint32_t AddressOfEntryPoint; uint32_t BaseOfCode; uint64_t ImageBase; uint32_t SectionAlignment; uint32_t FileAlignment; uint16_t MajorOperatingSystemVersion; uint16_t MinorOperatingSystemVersion; uint16_t MajorImageVersion; uint16_t MinorImageVersion; uint16_t MajorSubsystemVersion; uint16_t MinorSubsystemVersion; uint32_t Win32VersionValue; uint32_t SizeOfImage; uint32_t SizeOfHeaders; uint32_t CheckSum; uint16_t Subsystem; uint16_t DllCharacteristics; uint64_t SizeOfStackReserve; uint64_t SizeOfStackCommit; uint64_t SizeOfHeapReserve; uint64_t SizeOfHeapCommit; uint32_t LoaderFlags; uint32_t NumberOfRvaAndSizes; uint32_t DataDirectory[32]; };
+struct DOS_HEADER_NT { uint16_t e_magic; uint8_t pad[0x3A]; int32_t e_lfanew; };
+struct NT_HEADERS64_NT { uint32_t Signature; uint16_t Machine; uint16_t NumberOfSections; uint32_t TimeDateStamp; uint32_t PointerToSymbolTable; uint32_t NumberOfSymbols; uint16_t SizeOfOptionalHeader; uint16_t Characteristics; uint16_t Magic; uint8_t MajorLinkerVersion; uint8_t MinorLinkerVersion; uint32_t SizeOfCode; uint32_t SizeOfInitializedData; uint32_t SizeOfUninitializedData; uint32_t AddressOfEntryPoint; uint32_t BaseOfCode; uint64_t ImageBase; uint32_t SectionAlignment; uint32_t FileAlignment; uint16_t MajorOperatingSystemVersion; uint16_t MinorOperatingSystemVersion; uint16_t MajorImageVersion; uint16_t MinorImageVersion; uint16_t MajorSubsystemVersion; uint16_t MinorSubsystemVersion; uint32_t Win32VersionValue; uint32_t SizeOfImage; uint32_t SizeOfHeaders; uint32_t CheckSum; uint16_t Subsystem; uint16_t DllCharacteristics; uint64_t SizeOfStackReserve; uint64_t SizeOfStackCommit; uint64_t SizeOfHeapReserve; uint64_t SizeOfHeapCommit; uint32_t LoaderFlags; uint32_t NumberOfRvaAndSizes; uint32_t DataDirectory[32]; };
 struct EXPORT_DIRECTORY_NT { uint32_t Characteristics; uint32_t TimeDateStamp; uint16_t MajorVersion; uint16_t MinorVersion; uint32_t Name; uint32_t Base; uint32_t NumberOfFunctions; uint32_t NumberOfNames; uint32_t AddressOfFunctions; uint32_t AddressOfNames; uint32_t AddressOfNameOrdinals; };
 
 inline DOS_HEADER_NT* get_dos(void* base) noexcept {
@@ -1436,6 +1477,9 @@ inline DOS_HEADER_NT* get_dos(void* base) noexcept {
 inline NT_HEADERS64_NT* get_nt(void* base) noexcept {
     auto dos = get_dos(base);
     if (!dos || dos->e_magic != 0x5A4D) return nullptr;
+    // Reject absurd e_lfanew values (e.g. 0xFFFFFFFF -> -1) so a corrupt
+    // MZ header cannot yield a wild pointer that crashes on later deref.
+    if (dos->e_lfanew <= 0 || dos->e_lfanew > 0x10000000) return nullptr;
     return reinterpret_cast<NT_HEADERS64_NT*>(static_cast<char*>(base) + dos->e_lfanew);
 }
 inline EXPORT_DIRECTORY_NT* get_export(void* base) noexcept {
@@ -1689,7 +1733,6 @@ inline hook_info compare_iat_thunk(const char* module_name, const char* func_nam
         auto firstThunk     = *reinterpret_cast<uint32_t*>(importDesc + 0x10);
         if (!origFirstThunk && !name_rva && !firstThunk) break;
 
-        auto dllName = reinterpret_cast<const char*>(mod) + name_rva;
         auto thunk = reinterpret_cast<uintptr_t*>(reinterpret_cast<uint8_t*>(mod) + firstThunk);
 
         // The previous implementation compared the IAT entry to itself,
@@ -1703,19 +1746,27 @@ inline hook_info compare_iat_thunk(const char* module_name, const char* func_nam
             : thunk;
 
         if (orig != nullptr) {
-            auto hintNameRva = *reinterpret_cast<uint32_t*>(reinterpret_cast<uintptr_t>(orig));
-            auto fname = reinterpret_cast<const char*>(mod) + hintNameRva + 2;
-            if (std::strcmp(fname, func_name) == 0) {
-                uintptr_t iat_value = *thunk;
-                uintptr_t int_value = *orig;
-                info.expected = reinterpret_cast<void*>(int_value);
-                info.actual   = reinterpret_cast<void*>(iat_value);
-                info.deviation = static_cast<uintptr_t>(
-                    iat_value >= int_value
-                        ? iat_value - int_value
-                        : int_value - iat_value);
-                info.hooked = (iat_value != int_value);
-                return info;
+            uintptr_t thunk_val = *orig;
+#if defined(_WIN64)
+            static constexpr uintptr_t ORDINAL_FLAG = 0x8000000000000000ULL;
+#else
+            static constexpr uintptr_t ORDINAL_FLAG = 0x80000000ULL;
+#endif
+            if ((thunk_val & ORDINAL_FLAG) == 0) {
+                auto hintNameRva = static_cast<uint32_t>(thunk_val & 0x7FFFFFFFu);
+                auto fname = reinterpret_cast<const char*>(mod) + hintNameRva + 2;
+                if (std::strcmp(fname, func_name) == 0) {
+                    uintptr_t iat_value = *thunk;
+                    uintptr_t int_value = *orig;
+                    info.expected = reinterpret_cast<void*>(int_value);
+                    info.actual   = reinterpret_cast<void*>(iat_value);
+                    info.deviation = static_cast<uintptr_t>(
+                        iat_value >= int_value
+                            ? iat_value - int_value
+                            : int_value - iat_value);
+                    info.hooked = (iat_value != int_value);
+                    return info;
+                }
             }
         }
         importDesc += 20;
@@ -1744,9 +1795,13 @@ inline bool is_iat_hooked(const char* module_name, const char* func_name) noexce
 inline bool is_eat_forwarded(const char* module_name, const char* func_name) noexcept {
     void* base = nullptr;
     if (!get_module_base_ansi(module_name, &base)) return false;
-    auto exp_dir = reinterpret_cast<uint8_t*>(base) + *reinterpret_cast<uint32_t*>(
-                       reinterpret_cast<uint8_t*>(stealth::get_nt(base)) + 0x78 + 0x78);
-    if (!exp_dir) return false;
+    auto nt8 = reinterpret_cast<uint8_t*>(stealth::get_nt(base));
+    if (!nt8) return false;
+    uint16_t magic = *reinterpret_cast<uint16_t*>(nt8 + 0x18);
+    std::size_t dd_off = (magic == 0x20b) ? 0x88u : 0x78u;
+    uint32_t exp_rva = *reinterpret_cast<uint32_t*>(nt8 + dd_off);
+    if (!exp_rva) return false;
+    auto exp_dir = reinterpret_cast<uint8_t*>(base) + exp_rva;
     auto funcs = reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(base)
         + *reinterpret_cast<uint32_t*>(exp_dir + 0x1C));
     auto ordinals = reinterpret_cast<uint16_t*>(reinterpret_cast<uint8_t*>(base)
@@ -1764,11 +1819,6 @@ inline bool is_eat_forwarded(const char* module_name, const char* func_name) noe
                 if (s[k] == 0) break;
                 if (s[k] == '.' && k > 0) return true;
             }
-            return false;
-        }
-    }
-    return false;
-}
             return false;
         }
     }
@@ -1827,7 +1877,10 @@ inline bool hardware_breakpoint_register_nonzero() noexcept { return false; }
 inline bool hardware_breakpoint_register_nonzero() noexcept { return false; }
 #endif
 
-// See prologue_sha256 doc above.
+#ifndef _WIN32
+// Cross-platform prologue_sha256. On Windows the identical definition
+// inside the #ifdef _WIN32 block above is used instead; defining it here
+// too would be an ODR violation in the same translation unit.
 inline bool prologue_sha256(void const* func_ptr, std::size_t n,
                             uint8_t const expected[32]) noexcept {
     if (!func_ptr || n < 4 || n > 64) return false;
@@ -1837,6 +1890,7 @@ inline bool prologue_sha256(void const* func_ptr, std::size_t n,
     for (int i = 0; i < 32; ++i) diff |= digest[i] ^ expected[i];
     return diff == 0;
 }
+#endif
 
 } // namespace integrity (cross-platform helpers)
 

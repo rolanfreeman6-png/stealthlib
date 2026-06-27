@@ -2,7 +2,7 @@
 
 **Author:** rolanfreeman6-png
 **Repository:** https://github.com/rolanfreeman6-png/stealthlib
-**Version analysed:** v2.1.2 (head `8d991b6`) + Phase 1 MSVC-unblock hardening (AUDIT_v2.1.2.md, 22 findings closed)
+**Version analysed:** v2.2.0 (head + Phase 1-3 hardening: MSVC unblock, tooling, header split)
 **Analysis date:** 2026-06-25
 **Document purpose:** Self-contained analysis of the project's technical components, the engineering quality of its implementation, the audit-driven correctness verification, and its positioning with respect to competing libraries. Written so that a reviewer with no prior context can read this file end-to-end and form an independent opinion about whether the project merits attention.
 

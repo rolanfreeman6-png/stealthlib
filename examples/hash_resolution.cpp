@@ -1,4 +1,4 @@
-// StealthLib v2.1.2 example: HASH-BASED API RESOLUTION
+// StealthLib v2.2.0 example: HASH-BASED API RESOLUTION
 // ---------------------------------------------------------
 // What you SEE in the source: hashes of API/module names.
 // What you DO NOT see in the binary (NOT visible to `strings.exe`):

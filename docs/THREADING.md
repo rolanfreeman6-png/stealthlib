@@ -4,8 +4,8 @@
 (produced by the `S("...")` / `SW(L"...")` macros) and the
 `detail::encrypted_string_impl` / `encrypted_wstring_impl` they wrap.
 
-**Version:** v2.1.2 (introduced with the I-5 fix; supersedes the implicit
-and incorrect "atomic flag = thread-safe" claim of v2.1.2).
+**Version:** v2.2.0 (introduced with the I-5 fix; supersedes the implicit
+and incorrect "atomic flag = thread-safe" claim of v2.2.0).
 
 ---
 
@@ -79,13 +79,13 @@ ctor, and the existing `S()/SW()/unlock()` API. Its cost is a documented
 threads. This is the same model used by comparable compile-time string
 obfuscators (e.g. xorstr), whose instances are also short-lived locals.
 
-The v2.1.2 code used GCC/Clang `__atomic_*` builtins on the `decrypted`
+The v2.2.0 code used GCC/Clang `__atomic_*` builtins on the `decrypted`
 flag. That was **incorrect**: it fenced only the flag, not `buffer[]` /
 `encrypted[]`, so it gave a false impression of thread safety while the
 real races (concurrent `buffer[]` writes, decrypt-vs-reencrypt on
 `encrypted[]`) remained. Variant B makes the non-guarantee explicit and
 removes the non-portable builtins (which also blocked MSVC — see
-AUDIT_v2.1.2 C-5).
+AUDIT_v2.2.0 C-5).
 
 ---
 

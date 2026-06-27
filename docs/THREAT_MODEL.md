@@ -1,6 +1,6 @@
 # StealthLib — Threat Model
 
-**Version:** v2.1.2 (with Phase 1 hardening)
+**Version:** v2.2.0 (with Phase 1 hardening)
 **Scope:** this document states explicitly what StealthLib **does** protect
 against, what it **does not**, and maps each defence to the threat it
 addresses. It exists so users know exactly what they are buying.

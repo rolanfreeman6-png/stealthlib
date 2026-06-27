@@ -1,4 +1,4 @@
-// StealthLib v2.1.2 example: RAII UNLOCK FOR ENCRYPTED STRINGS
+// StealthLib v2.2.0 example: RAII UNLOCK FOR ENCRYPTED STRINGS
 // ---------------------------------------------------------
 // Demonstrates the `S("...").unlock()` RAII pattern:
 //  - When unlock() is called, plaintext exposes via .c_str().

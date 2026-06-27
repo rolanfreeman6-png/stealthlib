@@ -119,9 +119,9 @@ For each supported configuration, the test surface is run and the binary is stat
 
 | Configuration | Built targets | Test outcome |
 | --- | --- | --- |
-| Default `Release` (GCC 15.2) | 11 targets | 9/9 PASS, 0 plaintext leaks in `strings(1)` |
-| `Release` under `-Wall -Wextra -Wpedantic -Wshadow -Werror` | 11 targets | 9/9 PASS, `-Werror` clean |
-| `Debug` under `-fsanitize=address,undefined` | 11 targets | 9/9 PASS, ASan/UBSan no reports |
+| Default `Release` (GCC 15.2) | 14 targets | 14/14 PASS, 0 plaintext leaks in `strings(1)` |
+| `Release` under `-Wall -Wextra -Wpedantic -Wshadow -Werror` | 14 targets | 14/14 PASS, `-Werror` clean |
+| `Debug` under `-fsanitize=address,undefined` | 14 targets | 14/14 PASS, ASan/UBSan no reports |
 | `Release` with `-DSTEALTH_BUILD_FUZZER=ON` | `fuzz_hashes` standalone | exit 0 over the seed corpus |
 
 The `binary_scan_test` is itself a doctest-free ctest entry: it scans the produced `binary_scan_target` binary with `strings -n 8` for plaintext sentinels. As of the prior release it returns zero matches.
@@ -308,20 +308,20 @@ On a Linux GCC 15.2 box with cmake 4.x:
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
     -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
 cmake --build build --parallel
-cd build && ctest --output-on-failure  # expect 9/9 PASS
+cd build && ctest --output-on-failure  # expect 14/14 PASS
 
 # ASan + UBSan
 cmake -S . -B build_san -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer -g' \
     -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined
 cmake --build build_san
-cd build_san && ctest                              # expect 9/9 PASS
+cd build_san && ctest                              # expect 14/14 PASS
 
 # Strict warnings
 cmake -S . -B build_strict -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_FLAGS='-Wall -Wextra -Wpedantic -Wshadow -Werror'
 cmake --build build_strict
-cd build_strict && ctest                          # expect 9/9 PASS, -Werror clean
+cd build_strict && ctest                          # expect 14/14 PASS, -Werror clean
 
 # Fuzz
 cmake -S . -B build_fuzz -DSTEALTH_BUILD_FUZZER=ON

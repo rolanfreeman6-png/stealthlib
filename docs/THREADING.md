@@ -4,7 +4,7 @@
 (produced by the `S("...")` / `SW(L"...")` macros) and the
 `detail::encrypted_string_impl` / `encrypted_wstring_impl` they wrap.
 
-**Version:** v2.1.3 (introduced with the I-5 fix; supersedes the implicit
+**Version:** v2.1.2 (introduced with the I-5 fix; supersedes the implicit
 and incorrect "atomic flag = thread-safe" claim of v2.1.2).
 
 ---
@@ -127,7 +127,7 @@ buffers**, and share no mutable state.
   plus a start-gun (`std::atomic<int> ready`) barrier for tight
   interleaving. There is no shared mutable state between threads, so
   ThreadSanitizer reports **zero** races. This is the harness run by the
-  `linux-tsan` CI job and by `quickverify.sh`'s sanitizer phase; it must
+  `linux-tsan` CI job (quickverify.sh runs ASan+UBSan, not TSan); it must
   stay race-free indefinitely.
 
 - **Adversarial probe (`-DSTEALTH_ADVERSARIAL_RACE_PROBE`):** an opt-in

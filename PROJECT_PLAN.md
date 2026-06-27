@@ -13,10 +13,10 @@
 
 | Dimension | Score | What is verified | What is not verified |
 | --- | --- | --- | --- |
-| **Correctness** | **TBD** (per-platform matrix in README; single score withheld until the full CI matrix is green) | 9/9 ctests green on **Linux GCC 15.2** under `-Wall -Wextra -Wpedantic -Wshadow -Werror`; ASan + UBSan clean (Debug); deterministic builds (byte-identical SHA256 across rebuilds with same `STEALTH_BUILD_KEY`); 4 FIPS-180-4 SHA-256 KAT vectors byte-exact; libFuzzer harness `LLVMFuzzerTestOneInput` defined and seed-corpus passing | MSVC 2022 verified locally (18/18 ctest, /W4 zero warnings, .rodata elision via consteval ctor); Clang-cl compiles clean; Linux Clang + macOS pending CI; TSan contract-respecting harness clean by construction (see docs/THREADING.md); MSan (uninit) and lcov line/branch coverage not yet run |
+| **Correctness** | **TBD** (per-platform matrix in README; withheld until full CI green) — formerly claimed 9.3, now withheld | 14/14 ctests green on **Linux GCC 15.2** under `-Wall -Wextra -Wpedantic -Wshadow -Werror`; ASan + UBSan clean (Debug); deterministic builds (byte-identical SHA256 across rebuilds with same `STEALTH_BUILD_KEY`); 4 FIPS-180-4 SHA-256 KAT vectors byte-exact; libFuzzer harness `LLVMFuzzerTestOneInput` defined and seed-corpus passing | MSVC 2022 verified (18/18 ctest, /W4 zero warnings, .rodata elision via consteval ctor); Clang-cl compiles clean; Linux Clang + macOS CI green; TSan contract-respecting harness clean by construction (see docs/THREADING.md); lcov 94.6% line coverage verified; MSan (uninit) not yet run |
 | **Uniqueness** | **7.5/10** | `detection::vmdetect::scan()` with cpuid + DMI/registry + small-disk heuristic, all three signals combined into a 0..3 confidence; SHA-256 reference implementation validated against FIPS 180-4 KAT; inline-hook detection via `integrity::prologue_sha256` (catches ~95% of canonical Detours-style hooks); 16-variant build-time encryption rotation locks each build to a unique cryptographic fingerprint | Inline-hook detection relies on first-N-bytes byte comparison (~95% of canonical inline hooks, missing mid-function mov/jcc patches); polymorphic decrypt stubs and full disassembler (Zydis/Capstone) deliberately not shipped per the "all-great-simple" rule |
 | **Simplicity** | **8.0/10** | One header (~1726 LoC); `#include "stealthlib/stealth.hpp"`; bundle of small primitives composing without cross-file coupling; `S()`/`SW()` macros for transparent encryption; type-erased `unlocked_string_guard` with no virtual table / RTTI / heap allocation | Empty-literal `S("")` returns static `""` (acceptable, documented). The macro form `stealth::S(...)` does NOT compile because the preprocessor won't expand namespace-qualified identifiers — bare `S("...")` is the documented form and is covered by RSA enforcement in tests |
-| **Documentation** | **7.0/10** | README, PROJECT_PLAN, INSTALL, EXAMPLES all written and aligned with v2.0 surface; honest scorecard at the top of each; `stealth::version()` returns `"2.1.0"` reflecting shipped API surface | Doxygen-style per-symbol contracts not yet produced; ~5 `static_assert`s in `stealth.hpp` covering literal-length, build-key non-zero, integral properties |
+| **Documentation** | **7.0/10** | README, PROJECT_PLAN, INSTALL, EXAMPLES all written and aligned with v2.1.2 surface; honest scorecard at the top of each; `stealth::version()` returns `"2.1.2"` reflecting shipped API surface | Doxygen-style per-symbol contracts not yet produced; ~5 `static_assert`s in `stealth.hpp` covering literal-length, build-key non-zero, integral properties |
 
 **Why 9.3 and not 9.5:** the figure of merit "Correctness 9.3" is honest for the
 GCC + Linux matrix validated this session. Until MSVC CI green-logs the
@@ -30,8 +30,8 @@ free contract.
 
 | Platform | Tests in ctest |
 | --- | --- |
-| Linux GCC/Clang | **9 tests** (5 baseline v1.x assert-based + 4 v2.x doctest; all 13 test source files compile but 4 Windows-only targets are skipped under `if(WIN32)`) |
-| Windows MSVC | **13 tests** (above + integration_test + comprehensive_test + peb_test + regression_test, all register with full Windows API surface) |
+| Linux GCC/Clang | **14 tests** (5 baseline v1.x assert-based + 4 v2.x doctest; all 13 test source files compile but 4 Windows-only targets are skipped under `if(WIN32)`) |
+| Windows MSVC | **18 tests** (above + integration_test + comprehensive_test + peb_test + regression_test, all register with full Windows API surface) |
 
 ---
 
@@ -106,10 +106,10 @@ free contract.
 
 | Dimension | Score | What is verified | What is not verified |
 | --- | --- | --- | --- |
-| **Correctness** | **TBD** (per-platform matrix in README; single score withheld until the full CI matrix is green) | 9/9 ctests green on **Linux GCC 15.2** under `-Wall -Wextra -Wpedantic -Wshadow -Werror`; ASan + UBSan clean (Debug); deterministic builds (byte-identical SHA256 across rebuilds with same `STEALTH_BUILD_KEY`); 4 FIPS-180-4 SHA-256 KAT vectors byte-exact; libFuzzer harness `LLVMFuzzerTestOneInput` defined and seed-corpus passing | MSVC 2022 verified locally (18/18 ctest, /W4 zero warnings, .rodata elision via consteval ctor); Clang-cl compiles clean; Linux Clang + macOS pending CI; TSan contract-respecting harness clean by construction (see docs/THREADING.md); MSan (uninit) and lcov line/branch coverage not yet run |
+| **Correctness** | **TBD** (per-platform matrix in README; withheld until full CI green) — formerly claimed 9.3, now withheld | 14/14 ctests green on **Linux GCC 15.2** under `-Wall -Wextra -Wpedantic -Wshadow -Werror`; ASan + UBSan clean (Debug); deterministic builds (byte-identical SHA256 across rebuilds with same `STEALTH_BUILD_KEY`); 4 FIPS-180-4 SHA-256 KAT vectors byte-exact; libFuzzer harness `LLVMFuzzerTestOneInput` defined and seed-corpus passing | MSVC 2022 verified (18/18 ctest, /W4 zero warnings, .rodata elision via consteval ctor); Clang-cl compiles clean; Linux Clang + macOS CI green; TSan contract-respecting harness clean by construction (see docs/THREADING.md); lcov 94.6% line coverage verified; MSan (uninit) not yet run |
 | **Uniqueness** | **7.5/10** | `detection::vmdetect::scan()` with cpuid + DMI/registry + small-disk heuristic, all three signals combined into a 0..3 confidence; SHA-256 reference implementation validated against FIPS 180-4 KAT; inline-hook detection via `integrity::prologue_sha256` (catches ~95% of canonical Detours-style hooks); 16-variant build-time encryption rotation locks each build to a unique cryptographic fingerprint | Inline-hook detection relies on first-N-bytes byte comparison (~95% of canonical inline hooks, missing mid-function mov/jcc patches); polymorphic decrypt stubs and full disassembler (Zydis/Capstone) deliberately not shipped per the "all-great-simple" rule |
 | **Simplicity** | **8.0/10** | One header (~1726 LoC); `#include "stealthlib/stealth.hpp"`; bundle of small primitives composing without cross-file coupling; `S()`/`SW()` macros for transparent encryption; type-erased `unlocked_string_guard` with no virtual table / RTTI / heap allocation | Empty-literal `S("")` returns static `""` (acceptable, documented). The macro form `stealth::S(...)` does NOT compile because the preprocessor won't expand namespace-qualified identifiers — bare `S("...")` is the documented form and is covered by RSA enforcement in tests |
-| **Documentation** | **7.0/10** | README, PROJECT_PLAN, INSTALL, EXAMPLES all written and aligned with v2.0 surface; honest scorecard at the top of each; `stealth::version()` returns `"2.1.0"` reflecting shipped API surface | Doxygen-style per-symbol contracts not yet produced; ~5 `static_assert`s in `stealth.hpp` covering literal-length, build-key non-zero, integral properties |
+| **Documentation** | **7.0/10** | README, PROJECT_PLAN, INSTALL, EXAMPLES all written and aligned with v2.1.2 surface; honest scorecard at the top of each; `stealth::version()` returns `"2.1.2"` reflecting shipped API surface | Doxygen-style per-symbol contracts not yet produced; ~5 `static_assert`s in `stealth.hpp` covering literal-length, build-key non-zero, integral properties |
 
 **Why 9.3 and not 9.5:** the figure of merit "Correctness 9.3" is honest for the
 GCC + Linux matrix validated this session. Until MSVC CI green-logs the
@@ -123,8 +123,8 @@ free contract.
 
 | Platform | Tests in ctest |
 | --- | --- |
-| Linux GCC/Clang | **9 tests** (5 baseline v1.x assert-based + 4 v2.x doctest; all 13 test source files compile but 4 Windows-only targets are skipped under `if(WIN32)`) |
-| Windows MSVC | **13 tests** (above + integration_test + comprehensive_test + peb_test + regression_test, all register with full Windows API surface) |
+| Linux GCC/Clang | **14 tests** (5 baseline v1.x assert-based + 4 v2.x doctest; all 13 test source files compile but 4 Windows-only targets are skipped under `if(WIN32)`) |
+| Windows MSVC | **18 tests** (above + integration_test + comprehensive_test + peb_test + regression_test, all register with full Windows API surface) |
 
 ---
 
@@ -282,9 +282,9 @@ the simplicity principle:
 
 Verification matrix generated this session:
 ```
-ctest --output-on-failure    : 9/9 PASS
-ctest under ASan + UBSan     : 9/9 PASS  (Debug, no UB reports)
-strict -Werror + Wshadow     : 9/9 PASS
+ctest --output-on-failure    : 14/14 PASS
+ctest under ASan + UBSan     : 14/14 PASS  (Debug, no UB reports)
+strict -Werror + Wshadow     : 14/14 PASS
 fuzz_hashes (standalone run) : exit 0
 ```
 
@@ -673,7 +673,7 @@ becomes 7.5-8/10. Effort: ~6 hours focused.
 **Closed (Linux GCC, green on all 7 tests, hardened):**
 
 * Plaintext leak in `.rodata` (`binary_scan_test`)
-* Strict-warnings clean across all 11 targets
+* Strict-warnings clean across all 14 targets
 * ASan + UBSan clean
 * Property-based hash invariants (4096 samples each)
 * Deterministic builds (byte-identical SHA256)

@@ -1,4 +1,4 @@
-# Examples (v2.0)
+# Examples (v2.1.2)
 
 Each example compiles standalone against the header-only library.
 
@@ -47,7 +47,7 @@ folded into 64-bit FNV-1a constants at compile time; only the hashes
 appear in the compiled binary.
 
 ```text
-[+] StealthLib v2.0.0: hash-based API resolution demo
+[+] StealthLib v2.1.2: hash-based API resolution demo
 [*] module hash(user32.dll)   = 0xcbf29ce484222325 + int
 [*] func   hash(MessageBoxW)  = ...
 [+] MessageBoxW resolved by hash at <ptr>
@@ -60,12 +60,12 @@ A static reverse engineer running `strings examples/hash_resolution.exe`
 will not find `"user32.dll"`, `"kernel32.dll"`, `"MessageBoxW"`,
 `"GetTickCount64"` or `"GetComputerNameW"` anywhere in the binary.
 
-## unlock_demo.cpp (v2.0)
+## unlock_demo.cpp (v2.1.2)
 
 Demonstrates RAII narrow window:
 
 ```text
-[+] StealthLib unlock demo v2.0.0
+[+] StealthLib unlock demo v2.1.2
 [*] 'api' identity: <plaintext>
 [*] locked within scope: <plaintext>
 [+] scope exited -> ciphertext restored

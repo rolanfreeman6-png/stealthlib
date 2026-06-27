@@ -5,19 +5,8 @@
 **Head commit at audit:** 8d991b6 (v2.1.2)
 **Phase 1 goal:** unblock MSVC; honest docs; documented+verified threading contract.
 
-> **Headline:** all 22 audit findings are ✓ FIXED. The Windows MSVC 2022
-> build, which previously did not compile **at all** (7 critical compile
-> errors), now builds with `/W4` **zero warnings** and passes **18/18
-> ctest** on a clean build. The `.rodata` plaintext-elision invariant
-> holds on MSVC (verified by `binary_scan_test`). 13 additional
-> pre-existing Windows-only defects — never compiled before, so absent
-> from the v2.1.2 audit — were discovered and fixed during remediation
-> (listed in §2).
-
-Commits have **not** been created yet (default no-commit policy); the
-SHA column is therefore marked *pending*. When the user approves
-committing, each fix lands as its own commit per the plan's format
-(`fix(area): summary [PHASE-1 STEP-X]`, `Closes: <IDs>`).
+> Commits have been created and pushed. SHA column reflects the commit
+> that closed each finding.
 
 ---
 
@@ -25,28 +14,28 @@ committing, each fix lands as its own commit per the plan's format
 
 | ID | Sev | Status | Fix summary | Commit SHA |
 |----|-----|--------|-------------|------------|
-| **C-1** | critical | ✓ FIXED | `check_remote_debugger`: deleted the old PE-offset block (redeclared `pe_off`/`export_rva`). | pending |
-| **C-2** | critical | ✓ FIXED | `is_eat_forwarded`: deleted the orphaned `return false; }` lines at namespace scope. | pending |
-| **C-3** | critical | ✓ FIXED | `DOS_HEADER_NT`: added `pad[0x3A]` so `e_lfanew` sits at 0x3C; `NT_HEADERS64_NT`: removed spurious `Padding[4]` so `DataDirectory[0]` is at 0x88. | pending |
-| **C-4** | critical | ✓ FIXED | `prologue_sha256`: guarded the cross-platform second definition with `#ifndef _WIN32` (Windows uses the one inside `#ifdef _WIN32`). | pending |
-| **C-5** | critical | ✓ FIXED | Removed all `__atomic_*` builtins; `decrypted` is now a plain `bool`. Fixes MSVC compile **and** the false thread-safety claim (see I-5). `#if defined(_MSC_VER) #include <intrin.h>` added. | pending |
-| **C-6** | critical | ✓ FIXED | `rdtsc()`: MSVC `__rdtsc()` via `<intrin.h>`; GCC/Clang inline-asm fallback; non-x86 returns 0. Fixes both the x64 GCC-asm-under-`_M_X64` and the x86 no-return bugs. | pending |
-| **C-7** | critical | ✓ FIXED | `unlocked_wstring_guard`: added the `(const wchar_t*, size_t, std::nullptr_t)` ctor so `SW(L"").unlock()` compiles. | pending |
-| **I-1** | important | ✓ FIXED | `is_eat_forwarded`: replaced `0x78 + 0x78 = 0xF0` with magic-based `dd_off` (PE32+ 0x88 / PE32 0x78) + null-check on `get_nt`. | pending |
-| **I-2** | important | ✓ FIXED | `compare_iat_thunk`: read the full `uintptr_t` thunk; added `IMAGE_ORDINAL_FLAG` guard (skip ordinal imports); 8-byte read on PE32+. | pending |
-| **I-3** | important | ✓ FIXED | `regression_test.cpp`: rewrote `test_decode_rejects_*` for the current non-templated `optional` API; hardened `base64_decode` padding validation so the rejection assertions are real (not theatrical). | pending |
-| **I-4** | important | ✓ FIXED | `unlocked_wstring_guard`: added `operator=(unlocked_wstring_guard&&)`. | pending |
-| **I-5** | important | ✓ FIXED | Concurrency: chose **Variant B** (per-instance thread confinement). Removed the misleading atomic flag; plain `bool`. Contract documented in `docs/THREADING.md`. `test_concurrent_decrypt.cpp` rewritten (per-thread instances + start-gun; opt-in adversarial probe). | pending |
-| **M-1** | minor | ✓ FIXED | `signals::any()`: removed the tautologically-false `(build_key_match == 0)`; field kept as an informational compile-time snapshot, documented. | pending |
-| **M-2** | minor | ✓ FIXED | `STEALTH_VERSION_PATCH`→2, `STEALTH_VERSION_STRING`→"2.1.2". | pending |
-| **M-3** | minor | ✓ FIXED | `quickverify.sh` `finalize()`: `warn` no longer sets `any_fail`. | pending |
-| **M-4** | minor | ✓ FIXED | `quickverify.sh` Phase D: `shasum -a 256` fallback when `sha256sum` is absent (macOS). | pending |
-| **M-5** | minor | ✓ FIXED | `string_test.cpp`: added `S("")`/`SW(L"")` + `unlock()` blocks (exercises the nullptr-pool ctors; would have caught C-7). | pending |
-| **M-6** | minor | ✓ FIXED | `test_concurrent_decrypt.cpp`: rewritten with `std::atomic<int> ready` start-gun + per-thread instances; adversarial shared-instance probe behind `STEALTH_ADVERSARIAL_RACE_PROBE`. | pending |
-| **M-7** | minor | ✓ FIXED | Docs synced: version v2.1.2, LoC 1726, honest per-platform scorecard (single 9.x withheld). `1722`/`v2.1.1`/`1.0.0 (pre-release)` scrubbed (acceptance #4: 0 matches). | pending |
-| **M-8** | minor | ✓ FIXED | `quickverify.sh` header doc: added Phase G + `QV_SKIP=G` example. | pending |
-| **M-9** | minor | ✓ FIXED | `stealth.hpp` comment: `prologue_fingerprint`→`prologue_sha256`. | pending |
-| **M-10** | minor | ✓ FIXED | `quickverify.sh` Phase F: added `-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer`. | pending |
+| **C-1** | critical | ✓ FIXED | `check_remote_debugger`: deleted the old PE-offset block (redeclared `pe_off`/`export_rva`). | dbc37b2 |
+| **C-2** | critical | ✓ FIXED | `is_eat_forwarded`: deleted the orphaned `return false; }` lines at namespace scope. | dbc37b2 |
+| **C-3** | critical | ✓ FIXED | `DOS_HEADER_NT`: added `pad[0x3A]` so `e_lfanew` sits at 0x3C; `NT_HEADERS64_NT`: removed spurious `Padding[4]` so `DataDirectory[0]` is at 0x88. | dbc37b2 |
+| **C-4** | critical | ✓ FIXED | `prologue_sha256`: guarded the cross-platform second definition with `#ifndef _WIN32` (Windows uses the one inside `#ifdef _WIN32`). | dbc37b2 |
+| **C-5** | critical | ✓ FIXED | Removed all `__atomic_*` builtins; `decrypted` is now a plain `bool`. Fixes MSVC compile **and** the false thread-safety claim (see I-5). `#if defined(_MSC_VER) #include <intrin.h>` added. | dbc37b2 |
+| **C-6** | critical | ✓ FIXED | `rdtsc()`: MSVC `__rdtsc()` via `<intrin.h>`; GCC/Clang inline-asm fallback; non-x86 returns 0. Fixes both the x64 GCC-asm-under-`_M_X64` and the x86 no-return bugs. | dbc37b2 |
+| **C-7** | critical | ✓ FIXED | `unlocked_wstring_guard`: added the `(const wchar_t*, size_t, std::nullptr_t)` ctor so `SW(L"").unlock()` compiles. | dbc37b2 |
+| **I-1** | important | ✓ FIXED | `is_eat_forwarded`: replaced `0x78 + 0x78 = 0xF0` with magic-based `dd_off` (PE32+ 0x88 / PE32 0x78) + null-check on `get_nt`. | dbc37b2 |
+| **I-2** | important | ✓ FIXED | `compare_iat_thunk`: read the full `uintptr_t` thunk; added `IMAGE_ORDINAL_FLAG` guard (skip ordinal imports); 8-byte read on PE32+. | dbc37b2 |
+| **I-3** | important | ✓ FIXED | `regression_test.cpp`: rewrote `test_decode_rejects_*` for the current non-templated `optional` API; hardened `base64_decode` padding validation so the rejection assertions are real (not theatrical). | e920e02 |
+| **I-4** | important | ✓ FIXED | `unlocked_wstring_guard`: added `operator=(unlocked_wstring_guard&&)`. | dbc37b2 |
+| **I-5** | important | ✓ FIXED | Concurrency: chose **Variant B** (per-instance thread confinement). Removed the misleading atomic flag; plain `bool`. Contract documented in `docs/THREADING.md`. `test_concurrent_decrypt.cpp` rewritten (per-thread instances + start-gun; opt-in adversarial probe). | dbc37b2 |
+| **M-1** | minor | ✓ FIXED | `signals::any()`: removed the tautologically-false `(build_key_match == 0)`; field kept as an informational compile-time snapshot, documented. | dbc37b2 |
+| **M-2** | minor | ✓ FIXED | `STEALTH_VERSION_PATCH`→2, `STEALTH_VERSION_STRING`→"2.1.2". | dbc37b2 |
+| **M-3** | minor | ✓ FIXED | `quickverify.sh` `finalize()`: `warn` no longer sets `any_fail`. | a587e7f |
+| **M-4** | minor | ✓ FIXED | `quickverify.sh` Phase D: `shasum -a 256` fallback when `sha256sum` is absent (macOS). | a587e7f |
+| **M-5** | minor | ✓ FIXED | `string_test.cpp`: added `S("")`/`SW(L"")` + `unlock()` blocks (exercises the nullptr-pool ctors; would have caught C-7). | e920e02 |
+| **M-6** | minor | ✓ FIXED | `test_concurrent_decrypt.cpp`: rewritten with `std::atomic<int> ready` start-gun + per-thread instances; adversarial shared-instance probe behind `STEALTH_ADVERSARIAL_RACE_PROBE`. | e920e02 |
+| **M-7** | minor | ✓ FIXED | Docs synced: version v2.1.2, LoC 1726, honest per-platform scorecard (single 9.x withheld). `1722`/`v2.1.1`/`1.0.0 (pre-release)` scrubbed (acceptance #4: 0 matches). | 7c30747 |
+| **M-8** | minor | ✓ FIXED | `quickverify.sh` header doc: added Phase G + `QV_SKIP=G` example. | a587e7f |
+| **M-9** | minor | ✓ FIXED | `stealth.hpp` comment: `prologue_fingerprint`→`prologue_sha256`. | dbc37b2 |
+| **M-10** | minor | ✓ FIXED | `quickverify.sh` Phase F: added `-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer`. | a587e7f |
 
 ---
 
@@ -79,11 +68,11 @@ reached them. All fixed and covered by the now-green Windows ctest.
 | # | Criterion | Result |
 |---|-----------|--------|
 | 1 | `bash tools/quickverify.sh` — all phases PASS | **✓ Verified (WSL g++ 15.2)** — all 7 phases PASS: A (ctest), B (strict -Werror), C (ASan+UBSan), D (deterministic), E (SHA-256 KAT), F (fuzz corpus), G (SSE2 parity). |
-| 2 | Windows CI green: ≥ portable_smoke + test_strings + test_sha256 + regression_test | **✓ Verified locally** — clean MSVC 2022 build, `/W4` zero warnings, **18/18 ctest PASS** incl. all of the above + binary_scan + the four Windows-only suites. CI green pending push (workflows fixed: parallelism cap; macos.yml added). |
-| 3 | macOS CI green (≥ portable_smoke) | **Not verified locally** — no macOS host; `macos.yml` added (macos-14/clang). CI is the authority. |
+| 2 | Windows CI green: ≥ portable_smoke + test_strings + test_sha256 + regression_test | **✓ Verified** — CI green: Windows MSVC 18/18 ctest, Windows Clang clean, zero warnings. |
+| 3 | macOS CI green (≥ portable_smoke) | **✓ Verified** — macOS CI green (macos.yml, 27s). |
 | 4 | `git grep "1722\|v2.1.1\|1.0.0 (pre-release)" docs/ README.md PROJECT_PLAN.md` = 0 | **✓ Verified** — 0 matches. |
 | 5 | Adversarial TSan test RUN 100× without a single race | **✓ Verified (WSL g++ 15.2 TSan)** — **100/100 runs clean, 0 races**. Adversarial probe (`-DSTEALTH_ADVERSARIAL_RACE_PROBE`) correctly caught a data race on `buffer[]`/`encrypted[]` — contract proven real. |
-| 6 | This file, per-finding ✓ FIXED + SHA or ✗ DEFERRED + reason | **✓** — all 22 ✓ FIXED (SHAs pending commit). |
+| 6 | This file, per-finding ✓ FIXED + SHA or ✗ DEFERRED + reason | **✓** — all 22 ✓ FIXED with commit SHAs. |
 
 ### Linux GCC verification (g++ 15.2.0, Ubuntu WSL)
 
@@ -103,15 +92,11 @@ reached them. All fixed and covered by the now-green Windows ctest.
 
 ### Not verified (and why)
 
-- **lcov branch coverage HTML**: lcov 2.0 reports "no data found" for
-  branches in the default capture mode (needs `--rc geninfo_unexecuted_blocks=1`).
-  Raw `gcov -b` showed **90.43% branches executed** (170/188) — exceeds 75%.
-  Line coverage HTML is generated and verified: **94.6%** (423/447).
-- **4h libFuzzer continuous run**: `libFuzzer` needs clang (not fully installed
-  due to dependency conflicts — `libxml2` version mismatch on Ubuntu 26.04).
-  Standalone fixed-corpus drivers (**3/3 PASS** under ASan+UBSan) are the
-  interim. `nightly-fuzz.yml` CI workflow will run the 4h sweep once pushed.
-- **macOS**: no macOS host; `macos.yml` is the CI authority.
+- **4h libFuzzer continuous run**: `nightly-fuzz.yml` runs 10 min per target
+  in CI (not 4h); the plan's 4h target is a future Phase 2 stretch goal.
+  Standalone fixed-corpus drivers (**3/3 PASS** under ASan+UBSan) + CI
+  nightly fuzz (3 targets × 10 min, zero crashes) are the current bar.
+- **MSan (uninitialized memory)**: not yet run on any platform.
 
 ---
 
@@ -133,7 +118,6 @@ reached them. All fixed and covered by the now-green Windows ctest.
 - **Fixtures: configure-time generation** into the tests' working dir
   instead of a build-time custom target + POST_BUILD copy, which was
   fragile under multi-config generators and parallel builds.
-- **No commits / no push / no tag** made: per the default no-commit
-  policy. The working tree is ready; commit SHAs in §1/§2 will be filled
-  when the user approves committing (and the v2.2.0 tag is a Phase 3
-  deliverable, not Phase 1).
+- **Commits pushed**: 4 phase-1 commits on `main` (dbc37b2, e920e02,
+  a587e7f, 7c30747). A second round of audit-driven fixes (examples,
+  CI, docs drift) is in this commit. v2.2.0 tag is a Phase 3 deliverable.

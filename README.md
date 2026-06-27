@@ -21,10 +21,10 @@ did not build at all.) What is actually verified:
 | Platform | Status |
 | --- | --- |
 | Linux GCC (strict `-Werror`, ASan+UBSan) | ✓ ctest 14/14, quickverify 7/7 PASS, deterministic builds, 4× FIPS-180-4 SHA-256 KAT byte-exact, `.rodata` plaintext-elision verified, TSan 100× clean |
-| Windows MSVC 2022 (VS generator, `/W4`) | ✓ **18/18 ctest green, zero warnings**, `.rodata` plaintext-elision verified via `consteval` ctor — verified locally; CI green pending push |
-| Windows Clang-cl (`/W4`) | ✓ header compiles clean — verified locally; full ctest pending CI |
-| Linux Clang | unverified locally (CI `linux-clang` job) |
-| macOS Clang (arm64) | unverified locally (CI `macos.yml` job) |
+| Windows MSVC 2022 (VS generator, `/W4`) | ✓ **18/18 ctest green, zero warnings**, `.rodata` plaintext-elision verified via `consteval` ctor — CI green |
+| Windows Clang-cl (`/W4`) | ✓ header compiles clean — CI green |
+| Linux Clang | ✓ CI green (linux-clang job) |
+| macOS Clang (arm64) | ✓ CI green (macos.yml job) |
 | ARM64 / non-x86 | not supported — `rdtsc`/`cpuid` return 0 on other arches |
 | Coverage (lcov, Linux) | ✓ 94.6% line (423/447), 99.4% functions (307/309), 90.43% branches executed (gcov) |
 | TSan contract | ✓ clean harness 100/100 runs zero races; adversarial probe catches race (contract proven real) |
@@ -86,7 +86,7 @@ int main() {
 
 ---
 
-## Feature matrix (v2.0)
+## Feature matrix (v2.1.2)
 
 | Feature | Header-pull API | Compile-time? |
 | --- | --- | --- |
@@ -274,7 +274,7 @@ StealthLib v2.1.2 — coherent Windows-hardening bundle поставляемый
 | `integrity::prologue_sha256` | First-N-bytes function prologue SHA-256 проверка | Inline-hook detection | Anti-cheat, runtime function integrity |
 | `detail::sha256` (FIPS 180-4) | Pure C++ SHA-256 | Cryptographic hash | Streaming + one-shot для integrity checkpoints |
 | `STEALTH_BUILD_KEY` | Build-time per-binary key (git+timestamp MD5) | Bind ciphertext к build process | Build pipeline |
-| `stealth::version()` | Compile-time version string | "2.1.0" | Runtime introspection |
+| `stealth::version()` | Compile-time version string | "2.1.2" | Runtime introspection |
 
 ### Use-case decision matrix (когда что брать)
 

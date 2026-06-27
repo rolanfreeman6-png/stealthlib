@@ -179,3 +179,23 @@ jobs:
         run: cmake --build build --parallel
       - name: Run tests with sanitizers
         run: cd build && ctest --output-on-failure
+
+  linux-msan:
+    name: Linux MSan (MemorySanitizer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang
+        run: sudo apt-get update && sudo apt-get install -y clang cmake
+      - name: Build and run MSan (portable tests only)
+        run: |
+          MSAN_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1"
+          for test in portable_smoke_test string_test test_sse2_parity test_concurrent_decrypt; do
+            echo "--- MSan: $test ---"
+            clang++ -std=c++20 $MSAN_FLAGS \
+              -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL \
+              -I . tests/${test}.cpp -o ${test}_msan -lpthread
+            ./${test}_msan
+            echo "  ✓ PASS"
+            rm -f ${test}_msan
+          done

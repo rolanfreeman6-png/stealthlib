@@ -135,7 +135,7 @@ TEST_CASE("hash property: collision rate across diverse inputs") {
 // becomes the libFuzzer entry point. Without it, the executable still
 // runs the doctest assertions.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-    if (size == 0 || size > 256) return 0;
+    if (size == 0 || size > 255) return 0;
     char buf[256];
     std::memcpy(buf, data, size);
     buf[size] = '\0';

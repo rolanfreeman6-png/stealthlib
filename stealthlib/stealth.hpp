@@ -1755,26 +1755,32 @@ inline hook_info compare_iat_thunk(const char* module_name, const char* func_nam
             : thunk;
 
         if (orig != nullptr) {
-            uintptr_t thunk_val = *orig;
 #if defined(_WIN64)
             static constexpr uintptr_t ORDINAL_FLAG = 0x8000000000000000ULL;
 #else
             static constexpr uintptr_t ORDINAL_FLAG = 0x80000000ULL;
 #endif
-            if ((thunk_val & ORDINAL_FLAG) == 0) {
-                auto hintNameRva = static_cast<uint32_t>(thunk_val & 0x7FFFFFFFu);
-                auto fname = reinterpret_cast<const char*>(mod) + hintNameRva + 2;
-                if (std::strcmp(fname, func_name) == 0) {
-                    uintptr_t iat_value = *thunk;
-                    uintptr_t int_value = *orig;
-                    info.expected = reinterpret_cast<void*>(int_value);
-                    info.actual   = reinterpret_cast<void*>(iat_value);
-                    info.deviation = static_cast<uintptr_t>(
-                        iat_value >= int_value
-                            ? iat_value - int_value
-                            : int_value - iat_value);
-                    info.hooked = (iat_value != int_value);
-                    return info;
+            // Iterate through ALL thunks in this descriptor, not just the
+            // first. Each import descriptor has an array of thunks (one
+            // per imported function), terminated by a zero entry.
+            for (size_t idx = 0; ; ++idx) {
+                uintptr_t thunk_val = orig[idx];
+                if (thunk_val == 0) break;
+                if ((thunk_val & ORDINAL_FLAG) == 0) {
+                    auto hintNameRva = static_cast<uint32_t>(thunk_val & 0x7FFFFFFFu);
+                    auto fname = reinterpret_cast<const char*>(mod) + hintNameRva + 2;
+                    if (std::strcmp(fname, func_name) == 0) {
+                        uintptr_t iat_value = thunk[idx];
+                        uintptr_t int_value = orig[idx];
+                        info.expected = reinterpret_cast<void*>(int_value);
+                        info.actual   = reinterpret_cast<void*>(iat_value);
+                        info.deviation = static_cast<uintptr_t>(
+                            iat_value >= int_value
+                                ? iat_value - int_value
+                                : int_value - iat_value);
+                        info.hooked = (iat_value != int_value);
+                        return info;
+                    }
                 }
             }
         }
@@ -1809,26 +1815,28 @@ inline bool is_eat_forwarded(const char* module_name, const char* func_name) noe
     uint16_t magic = *reinterpret_cast<uint16_t*>(nt8 + 0x18);
     std::size_t dd_off = (magic == 0x20b) ? 0x88u : 0x78u;
     uint32_t exp_rva = *reinterpret_cast<uint32_t*>(nt8 + dd_off);
+    uint32_t exp_size = *reinterpret_cast<uint32_t*>(nt8 + dd_off + 4);
     if (!exp_rva) return false;
-    auto exp_dir = reinterpret_cast<uint8_t*>(base) + exp_rva;
-    auto funcs = reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(base)
+    auto base8 = reinterpret_cast<uint8_t*>(base);
+    auto exp_dir = base8 + exp_rva;
+    auto funcs = reinterpret_cast<uint32_t*>(base8
         + *reinterpret_cast<uint32_t*>(exp_dir + 0x1C));
-    auto ordinals = reinterpret_cast<uint16_t*>(reinterpret_cast<uint8_t*>(base)
+    auto ordinals = reinterpret_cast<uint16_t*>(base8
         + *reinterpret_cast<uint32_t*>(exp_dir + 0x24));
-    auto names = reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(base)
+    auto names = reinterpret_cast<uint32_t*>(base8
         + *reinterpret_cast<uint32_t*>(exp_dir + 0x20));
     auto n = *reinterpret_cast<uint32_t*>(exp_dir + 0x18);
     for (uint32_t i = 0; i < n; ++i) {
         const char* n_name = reinterpret_cast<const char*>(base) + names[i];
         if (std::strcmp(n_name, func_name) == 0) {
+            if (ordinals[i] >= *reinterpret_cast<uint32_t*>(exp_dir + 0x14))
+                return false;
             uint32_t rva = funcs[ordinals[i]];
-            uintptr_t ptr = reinterpret_cast<uintptr_t>(base) + rva;
-            const char* s = reinterpret_cast<const char*>(ptr);
-            for (uint32_t k = 0; k < 64; ++k) {
-                if (s[k] == 0) break;
-                if (s[k] == '.' && k > 0) return true;
-            }
-            return false;
+            // A forwarded export's RVA points inside the export directory
+            // (to a "Module.Function" string), not to code. Per PE spec
+            // (Microsoft PE Format §6.3.1): if the export RVA falls within
+            // the export directory range, it is a forwarder string.
+            return rva >= exp_rva && rva < exp_rva + exp_size;
         }
     }
     return false;

@@ -34,6 +34,6 @@ jobs:
             -DSTEALTH_LIBFUZZER_LINKED=ON
       - name: Build fuzz target
         run: cmake --build build --target ${{ matrix.target }} --parallel
-      - name: Run fuzz (10 min per target)
+      - name: Run fuzz (4h per target)
         run: |
-          ./build/tests/${{ matrix.target }} -max_total_time=600 -print_final_stats=1
+          ./build/tests/${{ matrix.target }} -max_total_time=14400 -print_final_stats=1

@@ -30,12 +30,18 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         if (data[i] == 0) { terminate_in_bounds = true; break; }
     }
     if (terminate_in_bounds) {
-        uint64_t f1 = stealth::hashes::fnv(data, size);
+        // runtime() stops at the first NUL byte, so we must compare it
+        // against fnv() of only the bytes up to (not including) that NUL.
+        size_t first_nul = 0;
+        for (; first_nul < size; ++first_nul) {
+            if (data[first_nul] == 0) break;
+        }
+        uint64_t f1 = stealth::hashes::fnv(data, first_nul);
         uint64_t f2 = stealth::hashes::runtime(reinterpret_cast<const char*>(data));
         if (f1 != f2) {
             std::fprintf(stderr,
                 "fnv identity failure on %zu bytes: %016llx vs runtime %016llx\n",
-                size, (unsigned long long)f1, (unsigned long long)f2);
+                first_nul, (unsigned long long)f1, (unsigned long long)f2);
             std::abort();
         }
     }

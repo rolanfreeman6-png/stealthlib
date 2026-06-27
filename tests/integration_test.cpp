@@ -9,7 +9,7 @@ int main() {
     std::cout << "[+] StealthLib Integration Test\n\n";
 
     std::cout << "[*] Testing version info...\n";
-    assert(std::strcmp(stealth::version(), "2.1.2") == 0);
+    assert(std::strcmp(stealth::version(), "2.2.0") == 0);
     std::cout << "[+] Version: " << stealth::version() << " - PASSED\n\n";
 
     std::cout << "[*] Testing string encryption integration...\n";

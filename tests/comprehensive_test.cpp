@@ -133,7 +133,7 @@ static bool test_sapi_fake() { stealth::stealth_api<void()> api("kernel32.dll", 
 static bool test_sapi_reset() { stealth::stealth_api<DWORD()> api("kernel32.dll", "GetTickCount"); api.reset(); return !api.is_valid(); }
 static bool test_sapi_reset_resolve() { stealth::stealth_api<DWORD()> api; api.reset("kernel32.dll", "GetTickCount"); return api.is_valid(); }
 
-static bool test_version() { return std::strcmp(stealth::version(), "2.1.2") == 0; }
+static bool test_version() { return std::strcmp(stealth::version(), "2.2.0") == 0; }
 static bool test_workflow_b64() { auto secret = S("my_api_key_123"); auto b64 = stealth::encoding::base64_encode(secret.c_str()); auto decoded = stealth::encoding::base64_decode(b64); if (!decoded.has_value()) return false; return *decoded == "my_api_key_123"; }
 static bool test_workflow_hex_xor() { auto secret = S("confidential"); auto hex = stealth::encoding::hex_encode(secret.c_str()); auto hex_decoded_opt = stealth::encoding::hex_decode(hex); if (!hex_decoded_opt.has_value()) return false; auto hex_decoded = std::move(*hex_decoded_opt); stealth::encoding::xor_key<16> key{"xorkey"}; stealth::encoding::xor_encode(hex_decoded.data(), hex_decoded.size(), key); stealth::encoding::xor_decode(hex_decoded.data(), hex_decoded.size(), key); std::string result(hex_decoded.begin(), hex_decoded.end()); return result == "confidential"; }
 

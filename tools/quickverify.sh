@@ -13,6 +13,8 @@
 #   F. Fuzz corpus driver          -- standalone harness built with g++ on fixed seeds
 #                                     (ASan+UBSan enabled so fuzzed paths are checked)
 #   G. SSE2 parity                 -- scalar vs _mm_xor_si128 builds produce identical output
+#   H. clang-tidy                  -- static analysis (if clang-tidy available)
+#   I. cppcheck                    -- static analysis (if cppcheck available)
 #
 # Linux-only phases skip cleanly on macOS/Windows. Any real failure exits non-zero.
 # Override with environment:
@@ -316,6 +318,65 @@ phase_G() {
     record "G" ok
 }
 
+# ============================================================
+# Phase H -- clang-tidy static analysis
+# ============================================================
+phase_H() {
+    if is_skipped H; then skip "Phase H: clang-tidy"; record "H" skip; return 0; fi
+    banner "Phase H: clang-tidy static analysis"
+    if ! command -v clang-tidy >/dev/null 2>&1 && ! command -v clang-tidy-18 >/dev/null 2>&1; then
+        skip "Phase H: clang-tidy not found"; record "H" skip; return 0
+    fi
+    local tidy; tidy="clang-tidy"; command -v clang-tidy >/dev/null 2>&1 || tidy="clang-tidy-18"
+    require_tool cmake || { record "H" fail; return 1; }
+
+    local bd; bd="$(mkbuild build_qv_h)"
+    cmb "$bd" "H" \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON \
+        -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF \
+        || { record "H" fail; return 1; }
+
+    local warnings
+    warnings="$($tidy -p "$bd" "$REPO_ROOT/examples/game_protection.cpp" 2>&1 | grep -c 'warning:' || echo 0)"
+    if [[ "$warnings" -gt 100 ]]; then
+        warn "clang-tidy: $warnings warnings (>100, review .clang-tidy config)"
+        record "H" warn
+    else
+        ok "clang-tidy: $warnings warnings (≤100, acceptable)"
+        record "H" ok
+    fi
+}
+
+# ============================================================
+# Phase I -- cppcheck static analysis
+# ============================================================
+phase_I() {
+    if is_skipped I; then skip "Phase I: cppcheck"; record "I" skip; return 0; fi
+    banner "Phase I: cppcheck static analysis"
+    require_tool cppcheck || { skip "Phase I: cppcheck not found"; record "I" skip; return 0; }
+
+    local errors
+    errors="$(cppcheck --enable=all --inline-suppr \
+        --suppress=missingIncludeSystem --suppress=unusedFunction \
+        -I "$REPO_ROOT/stealthlib" --std=c++20 \
+        "$REPO_ROOT/stealthlib/" "$REPO_ROOT/tests/" "$REPO_ROOT/examples/" \
+        2>&1 | grep -cE '^\(error\)' || echo 0)"
+    if [[ "$errors" -gt 0 ]]; then
+        bad "cppcheck: $errors errors found"
+        cppcheck --enable=all --inline-suppr \
+            --suppress=missingIncludeSystem --suppress=unusedFunction \
+            -I "$REPO_ROOT/stealthlib" --std=c++20 \
+            "$REPO_ROOT/stealthlib/" "$REPO_ROOT/tests/" "$REPO_ROOT/examples/" \
+            2>&1 | grep '^\(error\)' | sed 's/^/       /'
+        record "I" fail
+        return 1
+    fi
+    ok "cppcheck: 0 errors"
+    record "I" ok
+}
+
 finalize() {
     banner "Summary"
     local any_fail=0 any_warn=0
@@ -350,4 +411,6 @@ phase_D || true
 phase_E || true
 phase_F || true
 phase_G || true
+phase_H || true
+phase_I || true
 finalize

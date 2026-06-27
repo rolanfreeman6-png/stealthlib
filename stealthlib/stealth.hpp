@@ -1016,6 +1016,7 @@ inline std::optional<std::vector<uint8_t>> hex_decode(const std::string_view& st
 namespace memory {
 
 inline void secure_zero(void* ptr, size_t len) noexcept {
+    if (!ptr) return;
     volatile uint8_t* p = static_cast<volatile uint8_t*>(ptr);
     while (len--) *p++ = 0;
 }
@@ -1335,10 +1336,14 @@ inline bool registry_or_dmi_vm_vendor() noexcept {
 // Linux calls statvfs on /.
 inline bool small_disk_heuristic_gb(double min_gb) noexcept {
 #ifdef _WIN32
-    ULARGE_INTEGER free_bytes{};
-    if (!GetDiskFreeSpaceExA("C:\\", &free_bytes, nullptr, nullptr)) return false;
+    ULARGE_INTEGER total_bytes{};
+    // Use 3rd param (lpTotalNumberOfBytes), not 2nd (free bytes) — a
+    // real machine with a nearly-full disk would false-positive on free
+    // space. Linux path checks total (f_blocks * f_frsize); Windows must
+    // match.
+    if (!GetDiskFreeSpaceExA("C:\\", nullptr, &total_bytes, nullptr)) return false;
     constexpr double GB = 1024.0 * 1024.0 * 1024.0;
-    return static_cast<double>(free_bytes.QuadPart) / GB < min_gb;
+    return static_cast<double>(total_bytes.QuadPart) / GB < min_gb;
 #else
     struct statvfs v{};
     if (statvfs("/", &v) != 0) return false;
@@ -1367,10 +1372,10 @@ inline scan_result scan() noexcept {
     r.reported_disk_gb = [&]() -> double {
         double d = 0.0;
 #ifdef _WIN32
-        ULARGE_INTEGER fb{};
-        if (GetDiskFreeSpaceExA("C:\\", &fb, nullptr, nullptr)) {
+        ULARGE_INTEGER total{};
+        if (GetDiskFreeSpaceExA("C:\\", nullptr, &total, nullptr)) {
             constexpr double GB = 1024.0 * 1024.0 * 1024.0;
-            d = static_cast<double>(fb.QuadPart) / GB;
+            d = static_cast<double>(total.QuadPart) / GB;
         }
 #else
         struct statvfs v{};
@@ -1409,7 +1414,7 @@ struct PEB_LDR_NT { uint32_t Length; uint8_t Initialized; void* SsHandle; LIST_E
 struct PEB_STRUCT_NT { uint8_t InheritedAddressSpace; uint8_t ReadImageFileExecOptions; uint8_t BeingDebugged; uint8_t BitField; void* Mutant; void* ImageBaseAddress; PEB_LDR_NT* Ldr; };
 
 inline bool get_module_base(const wchar_t* name, void** out) noexcept {
-    if (!out) return false;
+    if (!out || !name) return false;
     *out = nullptr;
     auto peb = reinterpret_cast<PEB_STRUCT_NT*>(get_peb_ptr());
     if (!peb || !peb->Ldr) return false;
@@ -1507,6 +1512,7 @@ inline void* get_proc(void* base, const char* name) noexcept {
     auto funcs = reinterpret_cast<uint32_t*>(static_cast<char*>(base) + rva_in_image(base, exp->AddressOfFunctions));
     if (!rva_in_image(base, exp->AddressOfFunctions)) return nullptr;
     for (uint32_t i = 0; i < exp->NumberOfNames; ++i) {
+        if (!rva_in_image(base, names[i])) return nullptr;
         const char* n = reinterpret_cast<const char*>(base) + names[i];
         bool match = true;
         size_t j = 0;
@@ -1517,6 +1523,7 @@ inline void* get_proc(void* base, const char* name) noexcept {
             if (a != b) { match = false; break; }
         }
         if (match && n[j] == '\0' && name[j] == '\0') {
+            if (ordinals[i] >= exp->NumberOfFunctions) return nullptr;
             uint32_t f_rva = funcs[ordinals[i]];
             if (!rva_in_image(base, f_rva)) return nullptr;
             return static_cast<char*>(base) + f_rva;
@@ -1717,13 +1724,15 @@ inline hook_info compare_iat_thunk(const char* module_name, const char* func_nam
 
     auto dos = reinterpret_cast<uint8_t*>(mod);
     auto pe = reinterpret_cast<uint8_t*>(mod) + *reinterpret_cast<uint32_t*>(dos + 0x3C);
-    // OptionalHeader.DataDirectory[1] offset relative to NT signature:
-    // PE32+: 0x88 (Magic=0x20b). PE32: 0x78 (Magic=0x10b).
+    // OptionalHeader.DataDirectory[1] (IMPORT) offset from NT headers:
+    // PE32+: pe + 0x88 (DataDirectory[0]) + 0x08 = pe + 0x90
+    // PE32:  pe + 0x78 (DataDirectory[0]) + 0x08 = pe + 0x80
+    // The previous code computed opt = pe + 0x18 + SizeOfOptionalHeader
+    // (section table start) then added dd_offset, reading from the
+    // wrong location and making IAT detection non-functional.
     uint16_t magic = *reinterpret_cast<uint16_t*>(pe + 0x18);
-    std::size_t dd_offset = (magic == 0x20b) ? 0x88 : 0x78;
-    auto opt = pe + 0x18 + *(reinterpret_cast<uint16_t*>(pe + 0x14));
-    auto import_dir = opt + dd_offset;
-    auto importRva = *reinterpret_cast<uint32_t*>(import_dir + 0x10);
+    std::size_t import_dd_offset = (magic == 0x20b) ? 0x90 : 0x80;
+    auto importRva = *reinterpret_cast<uint32_t*>(pe + import_dd_offset);
     if (!importRva) return info;
 
     auto importDesc = reinterpret_cast<uint8_t*>(mod) + importRva;

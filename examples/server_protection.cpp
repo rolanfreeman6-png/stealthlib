@@ -1,5 +1,6 @@
 #include "stealthlib/stealth.hpp"
 #include <iostream>
+#include <cstring>
 #include <windows.h>
 
 int main() {
@@ -41,17 +42,17 @@ int main() {
 
     std::cout << "\n[*] Testing dynamic API resolution (no IAT)...\n";
 
-    using VirtualAlloc_t = LPVOID(*)(HMODULE, SIZE_T, DWORD, DWORD);
+    using VirtualAlloc_t = LPVOID(*)(LPVOID, SIZE_T, DWORD, DWORD);
     auto VirtualAlloc = stealth::get_function<VirtualAlloc_t>("kernel32.dll", "VirtualAlloc");
     if (VirtualAlloc) {
         std::cout << "[+] VirtualAlloc resolved dynamically\n";
         auto mem = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (mem) {
             std::cout << "[+] Memory allocated at: " << mem << "\n";
-            using VirtualFree_t = BOOL(*)(HMODULE, LPVOID, SIZE_T, DWORD);
+            using VirtualFree_t = BOOL(*)(LPVOID, SIZE_T, DWORD);
             auto VirtualFree = stealth::get_function<VirtualFree_t>("kernel32.dll", "VirtualFree");
             if (VirtualFree) {
-                VirtualFree(nullptr, mem, 0, MEM_RELEASE);
+                VirtualFree(mem, 0, MEM_RELEASE);
                 std::cout << "[+] Memory freed successfully\n";
             }
         }

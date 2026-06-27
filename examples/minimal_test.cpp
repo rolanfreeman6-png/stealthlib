@@ -1,6 +1,5 @@
 #include "stealthlib/stealth.hpp"
 #include <iostream>
-#include <cstring>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -28,7 +27,8 @@ int main() {
     }
 
     {
-        auto lock = S("narrow-window").unlock();
+        auto s = S("narrow-window");
+        auto lock = s.unlock();
         std::cout << "[+] RAII unlock plaintext inside scope: " << lock.c_str() << "\n";
     }
 

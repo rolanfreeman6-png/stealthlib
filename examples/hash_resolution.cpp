@@ -1,4 +1,4 @@
-// StealthLib v2.0 example: HASH-BASED API RESOLUTION
+// StealthLib v2.1.2 example: HASH-BASED API RESOLUTION
 // ---------------------------------------------------------
 // What you SEE in the source: hashes of API/module names.
 // What you DO NOT see in the binary (NOT visible to `strings.exe`):
@@ -21,7 +21,6 @@
 #include "stealthlib/stealth.hpp"
 #include <cstring>
 #include <iostream>
-#include <vector>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -47,7 +46,7 @@ int main() {
     using MessageBoxW_t = int(*)(HWND, LPCWSTR, LPCWSTR, UINT);
     auto mb = stealth::get_function_by_hash<MessageBoxW_t>(h_user32, h_msgbox_w);
     if (mb) {
-        std::cout << "[+] MessageBoxW resolved by hash at " << reinterpret_cast<void*>(&mb) << "\n";
+        std::cout << "[+] MessageBoxW resolved by hash at " << reinterpret_cast<void*>(mb) << "\n";
         (void)mb;
     } else {
         std::cout << "[!] Could not resolve MessageBoxW (environment-specific)\n";
@@ -80,9 +79,11 @@ int main() {
 
     std::cout << "\n[+] RAII unlock demo:\n";
     {
-        auto lock = S("hi").unlock();
+        auto lit = S("hi");
+        auto lock = lit.unlock();
         std::cout << "    scope 1: decrypted = " << lock.c_str() << "\n";
-        auto wlock = SW(L"hi wide").unlock();
+        auto wlit = SW(L"hi wide");
+        auto wlock = wlit.unlock();
         std::wcout << L"    scope 1: wide = " << wlock.c_str() << L"\n";
     }
     std::cout << "    scope exit: re-encrypted (string not visible in this dump)\n";

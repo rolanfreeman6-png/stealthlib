@@ -24,15 +24,15 @@ void benchmark_string_encryption() {
 
     auto time = benchmark([]() {
         auto s = S("benchmark_test_string_12345");
-        volatile const char* p = s.c_str();
-        (void)p;
+        volatile char c = s.c_str()[0];
+        (void)c;
     }, 10000);
     std::cout << "[+] S() macro: " << time << " ms per call\n";
 
     auto wide_time = benchmark([]() {
         auto s = SW(L"benchmark_wide_string_test");
-        volatile const wchar_t* p = s.c_str();
-        (void)p;
+        volatile wchar_t c = s.c_str()[0];
+        (void)c;
     }, 10000);
     std::cout << "[+] SW() macro: " << wide_time << " ms per call\n";
 
@@ -108,8 +108,8 @@ void benchmark_xor() {
 
     stealth::encoding::xor_key<16> key{"benchmark_key123"};
 
+    std::vector<uint8_t> copy = data;
     auto enc_time = benchmark([&]() {
-        std::vector<uint8_t> copy = data;
         stealth::encoding::xor_encode(copy.data(), copy.size(), key);
         volatile auto sz = copy.size();
         (void)sz;
@@ -123,14 +123,14 @@ void benchmark_api_resolution() {
     std::cout << "\n[*] API Resolution Benchmark (Windows only)\n";
 
     auto first_time = benchmark([]() {
-        auto fn = stealth::get_function<int(*)()>("kernel32.dll", "GetLastError");
+        auto fn = stealth::get_function<DWORD(*)()>("kernel32.dll", "GetLastError");
         volatile auto ptr = fn;
         (void)ptr;
     }, 1000);
     std::cout << "[+] get_function by name: " << first_time << " ms\n";
 
     auto hash_time = benchmark([]() {
-        using GT_t = int(*)();
+        using GT_t = DWORD(*)();
         auto fn = stealth::get_function_by_hash<GT_t>(
             stealth::hashes::fnv("kernel32.dll"),
             stealth::hashes::fnv("GetLastError"));
@@ -141,7 +141,7 @@ void benchmark_api_resolution() {
 
     auto module_time = benchmark([]() {
         stealth::module_loader loader("kernel32.dll");
-        auto fn = loader.get_function<int(*)()>("GetLastError");
+        auto fn = loader.get_function<DWORD(*)()>("GetLastError");
         volatile auto ptr = fn;
         (void)ptr;
     }, 1000);
@@ -152,14 +152,14 @@ void benchmark_stealth_api() {
     std::cout << "\n[*] stealth_api Template Benchmark\n";
 
     auto create_time = benchmark([]() {
-        stealth::stealth_api<int()> fn("kernel32.dll", "GetLastError");
+        stealth::stealth_api<DWORD()> fn("kernel32.dll", "GetLastError");
         volatile bool valid = fn.is_valid();
         (void)valid;
     }, 1000);
     std::cout << "[+] stealth_api by name construction: " << create_time << " ms\n";
 
     auto hash_time = benchmark([]() {
-        stealth::stealth_api<int()> fn(stealth::hashes::fnv("kernel32.dll"),
+        stealth::stealth_api<DWORD()> fn(stealth::hashes::fnv("kernel32.dll"),
                                        stealth::hashes::fnv("GetLastError"));
         volatile bool valid = fn.is_valid();
         (void)valid;
@@ -196,25 +196,26 @@ void benchmark_secure_memory() {
 
     std::vector<uint8_t> data(1024);
 
+    std::vector<uint8_t> zero_buf = data;
     auto zero_time = benchmark([&]() {
-        std::vector<uint8_t> copy = data;
-        stealth::memory::secure_zero(copy.data(), copy.size());
-        volatile auto sz = copy.size();
+        stealth::memory::secure_zero(zero_buf.data(), zero_buf.size());
+        volatile auto sz = zero_buf.size();
         (void)sz;
     }, 1000);
     std::cout << "[+] secure_zero (1KB): " << zero_time << " ms\n";
 
     const char* a = "benchmark_test_string_12345";
     const char* b = "benchmark_test_string_12345";
+    constexpr size_t cmp_len = 27;
     auto cmp_time = benchmark([&]() {
-        volatile bool r = stealth::memory::compare_constant_time(a, b, 30);
+        volatile bool r = stealth::memory::compare_constant_time(a, b, cmp_len);
         (void)r;
     }, 10000);
-    std::cout << "[+] compare_constant_time (30 bytes): " << cmp_time << " ms\n";
+    std::cout << "[+] compare_constant_time (" << cmp_len << " bytes): " << cmp_time << " ms\n";
 }
 
 int main() {
-    std::cout << "\nStealthLib Benchmark Suite v2.0.0\n";
+    std::cout << "\nStealthLib Benchmark Suite v" << stealth::version() << "\n";
 
     benchmark_string_encryption();
     benchmark_base64();

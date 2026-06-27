@@ -14,7 +14,7 @@ void demonstrate_string_encryption() {
     print_separator("COMPILE-TIME STRING ENCRYPTION");
     auto sensitive_api_key = S("sk-live-abc123def456ghi789jkl012");
     std::cout << "[+] Encrypted API Key: " << sensitive_api_key << "\n";
-    std::cout << "[*] String length: " << std::strlen(sensitive_api_key) << "\n";
+    std::cout << "[*] String length: " << sensitive_api_key.size() << "\n";
     auto connection_string = S("Server=prod.db.local;Password=Secret123!");
     std::cout << "[+] Connection String: " << connection_string << "\n";
     auto jwt_secret = S("JWT_SECRET_SUPER_LONG_KEY_FOR_PRODUCTION_ENVIRONMENT");
@@ -27,6 +27,7 @@ void demonstrate_string_encryption() {
     auto wide_title = SW(L"StealthLib Wide String Test");
     auto wide_msg = SW(L"All sensitive strings are encrypted at compile-time!");
     std::wcout << L"[+] Wide Title: " << wide_title << L"\n";
+    (void)wide_msg;
 }
 
 void demonstrate_peb_resolution() {
@@ -76,7 +77,7 @@ void demonstrate_encoding() {
     std::cout << "\n[*] Testing XOR encoding...\n";
     stealth::encoding::xor_key<16> key{"MySecretKey123456"};
     std::vector<uint8_t> data(original, original + std::strlen(original));
-    stealth::encoding::xor_decode(data.data(), data.size(), key);
+    stealth::encoding::xor_encode(data.data(), data.size(), key);
     std::cout << "[+] XOR Encrypted (hex): ";
     for (auto b : data) std::cout << std::hex << static_cast<int>(b) << " ";
     std::cout << std::dec << "\n";
@@ -134,14 +135,14 @@ void demonstrate_stealth_api() {
         std::cout << "[+] stealth_api resolved GetTickCount64\n";
         std::cout << "[*] System uptime: " << GetTickCount64_fn.get()() << " ms\n";
     }
-    auto VirtualAlloc_fn = stealth::stealth_api<LPVOID(HMODULE, SIZE_T, DWORD, DWORD)>("kernel32.dll", "VirtualAlloc");
+    auto VirtualAlloc_fn = stealth::stealth_api<LPVOID(LPVOID, SIZE_T, DWORD, DWORD)>("kernel32.dll", "VirtualAlloc");
     if (VirtualAlloc_fn.is_valid()) {
         std::cout << "[+] stealth_api resolved VirtualAlloc\n";
         auto mem = VirtualAlloc_fn.get()(nullptr, 8192, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (mem) {
             std::cout << "[+] Allocated memory at: " << mem << "\n";
-            auto VirtualFree_fn = stealth::stealth_api<BOOL(HMODULE, LPVOID, SIZE_T, DWORD)>("kernel32.dll", "VirtualFree");
-            if (VirtualFree_fn.is_valid()) { VirtualFree_fn.get()(nullptr, mem, 0, MEM_RELEASE); std::cout << "[+] Memory freed\n"; }
+            auto VirtualFree_fn = stealth::stealth_api<BOOL(LPVOID, SIZE_T, DWORD)>("kernel32.dll", "VirtualFree");
+            if (VirtualFree_fn.is_valid()) { VirtualFree_fn.get()(mem, 0, MEM_RELEASE); std::cout << "[+] Memory freed\n"; }
         }
     }
 }
@@ -154,6 +155,10 @@ void demonstrate_module_loader() {
         auto GetComputerNameW = kernel32.get_function<BOOL(*)(LPWSTR, LPDWORD)>("GetComputerNameW");
         if (GetComputerNameW) { wchar_t computer_name[256] = {}; DWORD size = 255; if (GetComputerNameW(computer_name, &size)) { std::cout << "[+] Computer Name: "; for (DWORD i = 0; i < size; ++i) std::cout << static_cast<char>(computer_name[i]); std::cout << "\n"; } }
         auto GetUserNameW = kernel32.get_function<BOOL(*)(LPWSTR, LPDWORD)>("GetUserNameW");
+        if (!GetUserNameW) {
+            stealth::module_loader advapi32("advapi32.dll");
+            GetUserNameW = advapi32.get_function<BOOL(*)(LPWSTR, LPDWORD)>("GetUserNameW");
+        }
         if (GetUserNameW) { wchar_t user_name[256] = {}; DWORD size = 255; if (GetUserNameW(user_name, &size)) { std::cout << "[+] User Name: "; for (DWORD i = 0; i < size; ++i) std::cout << static_cast<char>(user_name[i]); std::cout << "\n"; } }
     }
     stealth::module_loader ntdll("ntdll.dll");

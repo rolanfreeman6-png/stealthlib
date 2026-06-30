@@ -1,7 +1,12 @@
+stages:
+  - build
+  - test
+
 variables:
   BUILD_KEY: "0xC0FFEE42DEADBEEFULL"
 
 build-gcc:
+  stage: build
   image: ubuntu:24.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq g++ cmake make python3
@@ -9,3 +14,22 @@ build-gcc:
     - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
     - cmake --build build --parallel 4
     - cd build && ctest --output-on-failure
+
+build-clang:
+  stage: build
+  image: ubuntu:24.04
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq clang cmake make python3
+  script:
+    - cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
+    - cmake --build build --parallel 4
+    - cd build && ctest --output-on-failure
+
+strict-warnings:
+  stage: test
+  image: ubuntu:24.04
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq g++ cmake make
+  script:
+    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=OFF "-DCMAKE_CXX_FLAGS=-Werror -Wshadow -Wconversion -Wsign-conversion"
+    - cmake --build build --parallel 4

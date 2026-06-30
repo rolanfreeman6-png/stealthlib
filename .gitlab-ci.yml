@@ -1,22 +1,22 @@
 stages:
-  - s1
-  - s2
-  - s3
-  - s4
-  - s5
-  - s6
-  - s7
-  - s8
-  - s9
-  - s10
-  - s11
-  - s12
+  - build-gcc
+  - build-clang
+  - strict-warnings
+  - asan-ubsan
+  - tsan
+  - msan
+  - clang-tidy
+  - cppcheck
+  - coverage
+  - fuzz-hashes
+  - fuzz-strings
+  - fuzz-decoders
 
 variables:
   BUILD_KEY: "0xC0FFEE42DEADBEEFULL"
 
-job1:
-  stage: s1
+build-gcc:
+  stage: build-gcc
   image: ubuntu:24.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq g++ cmake make python3
@@ -25,8 +25,8 @@ job1:
     - cmake --build build --parallel 4
     - cd build && ctest --output-on-failure
 
-job2:
-  stage: s2
+build-clang:
+  stage: build-clang
   image: ubuntu:24.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq clang cmake make python3
@@ -35,8 +35,8 @@ job2:
     - cmake --build build --parallel 4
     - cd build && ctest --output-on-failure
 
-job3:
-  stage: s3
+strict-warnings:
+  stage: strict-warnings
   image: ubuntu:24.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq g++ cmake make
@@ -45,8 +45,8 @@ job3:
     - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=OFF -DCMAKE_CXX_FLAGS="$WARN_FLAGS"
     - cmake --build build --parallel 4
 
-job4:
-  stage: s4
+asan-ubsan:
+  stage: asan-ubsan
   image: ubuntu:24.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq clang cmake make python3
@@ -56,8 +56,8 @@ job4:
     - cmake --build build --parallel 4
     - cd build && ctest --output-on-failure
 
-job5:
-  stage: s5
+tsan:
+  stage: tsan
   image: ubuntu:24.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq clang cmake make
@@ -67,8 +67,8 @@ job5:
     - cmake --build build --parallel 4
     - cd build && ./tests/test_concurrent_decrypt
 
-job6:
-  stage: s6
+msan:
+  stage: msan
   image: ubuntu:24.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq clang
@@ -76,9 +76,15 @@ job6:
     - export MSAN_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1"
     - clang++ -std=c++20 $MSAN_FLAGS -DSTEALTH_BUILD_KEY=$BUILD_KEY -I . tests/portable_smoke_test.cpp -o msan_test -lpthread
     - ./msan_test && rm -f msan_test
+    - clang++ -std=c++20 $MSAN_FLAGS -DSTEALTH_BUILD_KEY=$BUILD_KEY -I . tests/string_test.cpp -o msan_test -lpthread
+    - ./msan_test && rm -f msan_test
+    - clang++ -std=c++20 $MSAN_FLAGS -DSTEALTH_BUILD_KEY=$BUILD_KEY -I . tests/test_sse2_parity.cpp -o msan_test -lpthread
+    - ./msan_test && rm -f msan_test
+    - clang++ -std=c++20 $MSAN_FLAGS -DSTEALTH_BUILD_KEY=$BUILD_KEY -I . tests/test_concurrent_decrypt.cpp -o msan_test -lpthread
+    - ./msan_test && rm -f msan_test
 
-job7:
-  stage: s7
+clang-tidy:
+  stage: clang-tidy
   image: ubuntu:24.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq clang clang-tidy cmake make ninja-build
@@ -87,8 +93,8 @@ job7:
     - "clang-tidy -p build examples/game_protection.cpp > tidy.log 2>&1"
     - cat tidy.log
 
-job8:
-  stage: s8
+cppcheck:
+  stage: cppcheck
   image: ubuntu:24.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq cppcheck
@@ -96,22 +102,53 @@ job8:
     - "cppcheck --enable=all --inline-suppr --suppress=missingIncludeSystem --suppress=unusedFunction -I stealthlib --std=c++20 stealthlib/ tests/ examples/ > cppcheck.log 2>&1"
     - cat cppcheck.log
 
-job9:
-  stage: s9
+coverage:
+  stage: coverage
   image: ubuntu:24.04
-  script: echo j9
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq g++ cmake make python3 lcov
+  script:
+    - export COV_FLAGS="--coverage -O0 -g"
+    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="$COV_FLAGS" -DCMAKE_EXE_LINKER_FLAGS="--coverage" -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
+    - cmake --build build --parallel 4
+    - cd build && ctest && cd ..
+    - lcov --capture --directory build --output-file lcov.info
+    - "lcov --remove lcov.info /usr/* tests/* third_party/* --output-file lcov_filtered.info"
+    - lcov --summary lcov_filtered.info
+  artifacts:
+    paths:
+      - lcov.info
+      - lcov_filtered.info
 
-job10:
-  stage: s10
+fuzz-hashes:
+  stage: fuzz-hashes
   image: ubuntu:24.04
-  script: echo j10
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq clang cmake ninja-build
+  script:
+    - export FUZZ_FLAGS="-fsanitize=fuzzer,address,undefined;-fno-sanitize-recover=all;-fno-omit-frame-pointer"
+    - cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF -DSTEALTH_BUILD_FUZZER=ON -DSTEALTH_FUZZ_FLAGS="$FUZZ_FLAGS" -DSTEALTH_LIBFUZZER_LINKED=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
+    - cmake --build build --target fuzz_hashes --parallel
+    - ./build/tests/fuzz_hashes -max_total_time=3600 -print_final_stats=1
 
-job11:
-  stage: s11
+fuzz-strings:
+  stage: fuzz-strings
   image: ubuntu:24.04
-  script: echo j11
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq clang cmake ninja-build
+  script:
+    - export FUZZ_FLAGS="-fsanitize=fuzzer,address,undefined;-fno-sanitize-recover=all;-fno-omit-frame-pointer"
+    - cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF -DSTEALTH_BUILD_FUZZER=ON -DSTEALTH_FUZZ_FLAGS="$FUZZ_FLAGS" -DSTEALTH_LIBFUZZER_LINKED=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
+    - cmake --build build --target fuzz_strings --parallel
+    - ./build/tests/fuzz_strings -max_total_time=3600 -print_final_stats=1
 
-job12:
-  stage: s12
+fuzz-decoders:
+  stage: fuzz-decoders
   image: ubuntu:24.04
-  script: echo j12
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq clang cmake ninja-build
+  script:
+    - export FUZZ_FLAGS="-fsanitize=fuzzer,address,undefined;-fno-sanitize-recover=all;-fno-omit-frame-pointer"
+    - cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF -DSTEALTH_BUILD_FUZZER=ON -DSTEALTH_FUZZ_FLAGS="$FUZZ_FLAGS" -DSTEALTH_LIBFUZZER_LINKED=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
+    - cmake --build build --target fuzz_decoders --parallel
+    - ./build/tests/fuzz_decoders -max_total_time=3600 -print_final_stats=1

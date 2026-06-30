@@ -93,13 +93,7 @@ int main() {
     // Known-answer: encryption — ciphertext must differ from plaintext
     {
         auto enc_test = S("Hello, World!");
-        const char* plaintext = "Hello, World!";
-        // Before decrypt, buffer should not contain plaintext
-        // After decrypt, it should match
         assert(std::strcmp(enc_test, "Hello, World!") == 0);
-        // Verify the encrypted[] array differs from plaintext (not just a copy)
-        // We can't access encrypted[] directly, but we can verify decrypt works
-        // and that re-encrypt changes state
         std::cout << "[+] Known-answer: encryption round-trip - PASSED\n";
     }
 

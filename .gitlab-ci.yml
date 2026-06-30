@@ -108,11 +108,11 @@ coverage:
   before_script:
     - apt-get update -qq && apt-get install -y -qq g++ cmake make python3 lcov
   script:
-    - export COV_FLAGS="--coverage -O0 -g"
+    - export COV_FLAGS="--coverage -O0 -g -fprofile-update=atomic"
     - cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="$COV_FLAGS" -DCMAKE_EXE_LINKER_FLAGS="--coverage" -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
     - cmake --build build --parallel 4
     - cd build && ctest && cd ..
-    - lcov --capture --directory build --output-file lcov.info
+    - lcov --capture --directory build --output-file lcov.info --ignore-errors negative
     - "lcov --remove lcov.info /usr/* tests/* third_party/* --output-file lcov_filtered.info"
     - lcov --summary lcov_filtered.info
   artifacts:

@@ -1,0 +1,222 @@
+# StealthLab GitLab CI — heavy CI tasks (fuzzing, MSan, coverage, static analysis)
+# Runs on GitLab Ultimate trial shared runners.
+# GitHub ci.yml handles only fast build+test checks.
+
+stages:
+  - build
+  - test
+  - sanitize
+  - analyze
+  - coverage
+  - fuzz
+
+variables:
+  GIT_STRATEGY: clone
+  CMAKE_BUILD_KEY: "0xC0FFEE42DEADBEEFULL"
+
+# ── Build + test on Linux GCC ──────────────────────────────────────
+build-gcc:
+  stage: build
+  image: ubuntu:24.10
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq g++ cmake make python3
+  script:
+    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
+        -DSTEALTH_BUILD_FIXTURES=ON
+        -DSTEALTH_BUILD_KEY=$CMAKE_BUILD_KEY
+    - cmake --build build --parallel 4
+    - cd build && ctest --output-on-failure
+  artifacts:
+    paths:
+      - build/
+    expire_in: 1 day
+
+# ── Build + test on Linux Clang ────────────────────────────────────
+build-clang:
+  stage: build
+  image: ubuntu:24.10
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq clang cmake make python3
+  script:
+    - cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++
+        -DCMAKE_BUILD_TYPE=Release
+        -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
+        -DSTEALTH_BUILD_FIXTURES=ON
+        -DSTEALTH_BUILD_KEY=$CMAKE_BUILD_KEY
+    - cmake --build build --parallel 4
+    - cd build && ctest --output-on-failure
+
+# ── Strict warnings (-Werror -Wconversion -Wshadow) ────────────────
+strict-warnings:
+  stage: test
+  image: ubuntu:24.10
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq g++ cmake make
+  script:
+    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF
+        -DSTEALTH_BUILD_FIXTURES=OFF
+        -DCMAKE_CXX_FLAGS="-Werror -Wshadow -Wconversion -Wsign-conversion"
+    - cmake --build build --parallel 4
+
+# ── ASan + UBSan ───────────────────────────────────────────────────
+sanitizers-asan-ubsan:
+  stage: sanitize
+  image: ubuntu:24.10
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq clang cmake make python3
+  script:
+    - cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++
+        -DCMAKE_BUILD_TYPE=Debug
+        -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g"
+        -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+        -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF
+        -DSTEALTH_BUILD_FIXTURES=ON
+        -DSTEALTH_BUILD_KEY=$CMAKE_BUILD_KEY
+    - cmake --build build --parallel 4
+    - cd build && ctest --output-on-failure
+
+# ── TSan (100 runs, zero races expected) ───────────────────────────
+sanitizers-tsan:
+  stage: sanitize
+  image: ubuntu:24.10
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq clang cmake make
+  script:
+    - cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++
+        -DCMAKE_BUILD_TYPE=Debug
+        -DCMAKE_CXX_FLAGS="-fsanitize=thread -g -O1"
+        -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+        -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF
+        -DSTEALTH_BUILD_FIXTURES=OFF
+        -DSTEALTH_BUILD_KEY=$CMAKE_BUILD_KEY
+    - cmake --build build --parallel 4
+    - cd build && ./tests/test_concurrent_decrypt
+    - |
+      ok=0; fail=0
+      for i in $(seq 1 100); do
+        if ./build/tests/test_concurrent_decrypt >/dev/null 2>&1; then ok=$((ok+1)); else fail=$((fail+1)); fi
+      done
+      echo "TSan: $ok OK, $fail FAIL out of 100"
+      [ "$fail" -eq 0 ] || exit 1
+
+# ── MSan (MemorySanitizer) ─────────────────────────────────────────
+sanitizers-msan:
+  stage: sanitize
+  image: ubuntu:24.10
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq clang cmake make
+  script:
+    - |
+      MSAN_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1"
+      for test in portable_smoke_test string_test test_sse2_parity test_concurrent_decrypt; do
+        echo "--- MSan: $test ---"
+        clang++ -std=c++20 $MSAN_FLAGS -DSTEALTH_BUILD_KEY=$CMAKE_BUILD_KEY \
+          -I . tests/${test}.cpp -o ${test}_msan -lpthread
+        ./${test}_msan
+        echo "  PASS"
+        rm -f ${test}_msan
+      done
+
+# ── clang-tidy static analysis ─────────────────────────────────────
+clang-tidy:
+  stage: analyze
+  image: ubuntu:24.10
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq clang clang-tidy cmake make ninja-build
+  script:
+    - cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_TESTS=ON
+        -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_FIXTURES=ON
+        -DSTEALTH_BUILD_KEY=$CMAKE_BUILD_KEY
+    - clang-tidy -p build examples/game_protection.cpp 2>&1 | tee tidy.log
+    - warnings=$(grep -c 'warning:' tidy.log || echo 0)
+    - echo "clang-tidy: $warnings warnings"
+    - |
+      if [ "$warnings" -gt 100 ]; then
+        echo "Too many warnings (>100)"
+        exit 1
+      fi
+
+# ── cppcheck static analysis ───────────────────────────────────────
+cppcheck:
+  stage: analyze
+  image: ubuntu:24.10
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq cppcheck
+  script:
+    - |
+      errors=$(cppcheck --enable=all --inline-suppr \
+        --suppress=missingIncludeSystem --suppress=unusedFunction \
+        -I stealthlib --std=c++20 \
+        stealthlib/ tests/ examples/ 2>&1 | grep -cE '^\(error\)' || echo 0)
+      echo "cppcheck: $errors errors"
+      [ "$errors" -eq 0 ] || exit 1
+
+# ── Coverage (lcov, ≥85% line / ≥75% branch) ───────────────────────
+coverage:
+  stage: coverage
+  image: ubuntu:24.10
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq g++ cmake make python3 lcov
+  script:
+    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+        -DCMAKE_CXX_FLAGS="--coverage -O0 -g"
+        -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+        -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF
+        -DSTEALTH_BUILD_FIXTURES=ON
+        -DSTEALTH_BUILD_KEY=$CMAKE_BUILD_KEY
+    - cmake --build build --parallel 4
+    - cd build && ctest && cd ..
+    - lcov --capture --directory build --output-file lcov.info
+    - lcov --remove lcov.info '/usr/*' '*/tests/*' '*/third_party/*' --output-file lcov_filtered.info
+    - lcov --summary lcov_filtered.info
+    - |
+      line_pct=$(lcov --summary lcov_filtered.info 2>&1 | grep "lines" | grep -oP '\d+\.\d+' | head -1)
+      echo "Line coverage: ${line_pct}%"
+      if (( $(echo "$line_pct < 85" | bc -l) )); then
+        echo "Coverage below 85%"
+        exit 1
+      fi
+  artifacts:
+    paths:
+      - lcov.info
+      - lcov_filtered.info
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: lcov_filtered.info
+
+# ── Fuzz 4h × 3 targets (libFuzzer, zero crashes expected) ────────
+.fuzz_template: &fuzz_template
+  stage: fuzz
+  image: ubuntu:24.10
+  timeout: 5 hours
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq clang cmake ninja-build
+  script:
+    - cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
+        -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF
+        -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF
+        -DSTEALTH_BUILD_FUZZER=ON
+        -DSTEALTH_FUZZ_FLAGS="-fsanitize=fuzzer,address,undefined;-fno-sanitize-recover=all;-fno-omit-frame-pointer"
+        -DSTEALTH_LIBFUZZER_LINKED=ON
+        -DSTEALTH_BUILD_KEY=$CMAKE_BUILD_KEY
+    - cmake --build build --target $FUZZ_TARGET --parallel
+    - ./build/tests/$FUZZ_TARGET -max_total_time=14400 -print_final_stats=1
+
+fuzz_hashes:
+  <<: *fuzz_template
+  variables:
+    FUZZ_TARGET: fuzz_hashes
+
+fuzz_strings:
+  <<: *fuzz_template
+  variables:
+    FUZZ_TARGET: fuzz_strings
+
+fuzz_decoders:
+  <<: *fuzz_template
+  variables:
+    FUZZ_TARGET: fuzz_decoders

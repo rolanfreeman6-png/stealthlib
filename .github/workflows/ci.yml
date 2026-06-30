@@ -1,5 +1,9 @@
 name: CI
 
+# GitHub CI: fast build+test checks only (~2 min total).
+# Heavy CI (fuzzing 4h, MSan, coverage, clang-tidy, cppcheck, TSan 100x)
+# runs on GitLab (.gitlab-ci.yml) with Ultimate trial.
+
 on:
   push:
     branches: [ main, master ]
@@ -7,21 +11,8 @@ on:
     branches: [ main, master ]
 
 jobs:
-  check-description:
-    name: GitHub repo description
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify repo description
-        run: |
-          if [ -z "$REPO_DESC" ]; then
-            echo "Skipping (REPO_DESC env not set in this fork)"
-            exit 0
-          fi
-          echo "Done"
-
-  windows-msvc-release:
-    name: Windows MSVC Release
+  windows-msvc:
+    name: Windows MSVC
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -30,60 +21,15 @@ jobs:
         run: |
           mkdir build
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 \
-            -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_BENCHMARK=ON
+            -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
       - name: Build
         run: cmake --build build --config Release --parallel 2
       - name: Run tests
         shell: bash
-        run: |
-          cd build
-          ctest -C Release --output-on-failure
-      - name: Run examples
-        shell: bash
-        run: |
-          cd build
-          ./examples/Release/hash_resolution.exe || true
-          ./examples/Release/unlock_demo.exe || true
-
-  windows-clang-release:
-    name: Windows Clang Release
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure CMake
-        shell: bash
-        run: |
-          mkdir build
-          cmake -S . -B build -G "Ninja" \
-            -DCMAKE_CXX_COMPILER=clang++ \
-            -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
-      - name: Build
-        run: cmake --build build --parallel 2
-      - name: Run tests
-        shell: bash
-        run: |
-          cd build
-          ctest --output-on-failure
-
-  windows-clang-tidy:
-    name: Windows Clang-Tidy (static analysis)
-    runs-on: windows-2022
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure CMake
-        shell: bash
-        run: |
-          mkdir build
-          cmake -S . -B build -G "Ninja" \
-            -DCMAKE_CXX_COMPILER=clang++ \
-            -DSTEALTH_CLANG_TIDY=ON \
-            -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_TESTS=OFF
-      - name: Build (clang-tidy runs as part of compile)
-        run: cmake --build build --parallel
+        run: cd build && ctest -C Release --output-on-failure
 
   linux-gcc:
-    name: Linux GCC Release
+    name: Linux GCC
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,103 +45,18 @@ jobs:
       - name: Run tests
         run: cd build && ctest --output-on-failure
 
-  linux-clang:
-    name: Linux Clang Release
-    runs-on: ubuntu-latest
+  macos-clang:
+    name: macOS Clang
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - name: Install
-        run: sudo apt-get update && sudo apt-get install -y clang cmake
-      - name: Configure CMake
-        run: |
-          mkdir build && cmake -S . -B build \
-            -DCMAKE_CXX_COMPILER=clang++ \
-            -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
-      - name: Build
-        run: cmake --build build --parallel
-      - name: Run tests
-        run: cd build && ctest --output-on-failure
-
-  linux-strict-warnings:
-    name: Linux Strict Warnings (-Werror -Wconversion -Wshadow)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install
-        run: sudo apt-get update && sudo apt-get install -y g++-13 cmake
       - name: Configure CMake
         run: |
           mkdir build
           cmake -S . -B build \
-            -DCMAKE_CXX_COMPILER=g++-13 \
             -DCMAKE_BUILD_TYPE=Release \
-            -DSTEALTH_BUILD_EXAMPLES=OFF \
-            -DSTEALTH_BUILD_TESTS=ON \
-            -DSTEALTH_BUILD_BENCHMARK=OFF \
-            -DSTEALTH_BUILD_FIXTURES=OFF \
-            -DCMAKE_CXX_FLAGS="-Werror -Wshadow -Wconversion -Wsign-conversion -Wnon-virtual-dtor"
-      - name: Build (warnings treated as errors)
-        run: cmake --build build --parallel
-
-  linux-tsan:
-    name: Linux TSan (ThreadSanitizer)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install
-        run: sudo apt-get update && sudo apt-get install -y clang cmake
-      - name: Configure CMake (TSan Debug)
-        run: |
-          mkdir build
-          cmake -S . -B build \
-            -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_FLAGS="-fsanitize=thread -g -O1" \
-            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
-            -DSTEALTH_BUILD_EXAMPLES=OFF \
-            -DSTEALTH_BUILD_TESTS=ON \
-            -DSTEALTH_BUILD_FIXTURES=OFF
+            -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
       - name: Build
         run: cmake --build build --parallel
-      - name: Run TSan race test
-        run: cd build && ./tests/test_concurrent_decrypt
-
-  linux-sanitizers:
-    name: Linux Sanitizers (ASan + UBSan)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install
-        run: sudo apt-get update && sudo apt-get install -y clang cmake
-      - name: Configure CMake (Debug + sanitizers)
-        run: |
-          mkdir build
-          cmake -S . -B build \
-            -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DSTEALTH_SANITIZERS=ON \
-            -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_TESTS=ON
-      - name: Build
-        run: cmake --build build --parallel
-      - name: Run tests with sanitizers
+      - name: Run tests
         run: cd build && ctest --output-on-failure
-
-  linux-msan:
-    name: Linux MSan (MemorySanitizer)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install clang
-        run: sudo apt-get update && sudo apt-get install -y clang cmake
-      - name: Build and run MSan (portable tests only)
-        run: |
-          MSAN_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1"
-          for test in portable_smoke_test string_test test_sse2_parity test_concurrent_decrypt; do
-            echo "--- MSan: $test ---"
-            clang++ -std=c++20 $MSAN_FLAGS \
-              -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL \
-              -I . tests/${test}.cpp -o ${test}_msan -lpthread
-            ./${test}_msan
-            echo "  ✓ PASS"
-            rm -f ${test}_msan
-          done

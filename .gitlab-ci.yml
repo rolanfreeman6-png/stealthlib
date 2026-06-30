@@ -113,7 +113,7 @@ coverage:
     - cmake --build build --parallel 4
     - cd build && ctest && cd ..
     - lcov --capture --directory build --output-file lcov.info --ignore-errors negative
-    - "lcov --remove lcov.info /usr/* tests/* third_party/* --output-file lcov_filtered.info"
+    - "lcov --remove lcov.info /usr/* tests/* third_party/* --output-file lcov_filtered.info --ignore-errors unused"
     - lcov --summary lcov_filtered.info
   artifacts:
     paths:

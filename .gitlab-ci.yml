@@ -159,7 +159,7 @@ semgrep:
   stage: semgrep
   image: returntocorp/semgrep
   script:
-    - semgrep scan --config=p/c++ --config=p/security-audit --json > semgrep_results.json || true
+    - "semgrep scan --config=p/c++ --config=p/security-audit --json > semgrep_results.json || true"
     - cat semgrep_results.json
   artifacts:
     paths:
@@ -176,9 +176,9 @@ mutation:
     - dpkg -i mull.deb 2>/dev/null || apt-get install -y -f -qq
     - export MUT_FLAGS="-fembed-bitcode -std=c++20 -O1 -DSTEALTH_BUILD_KEY=$BUILD_KEY -I ."
     - clang++ $MUT_FLAGS tests/string_test.cpp -o string_test_mull
-    - mull-runner string_test_mull --reporters=stdout > mutation_results.txt 2>&1 || true
+    - "mull-runner string_test_mull --reporters=stdout > mutation_results.txt 2>&1 || true"
     - cat mutation_results.txt
-    - "score=$(grep -oP 'mutation score: \K[0-9.]+' mutation_results.txt || echo 0)"
+    - "score=$(grep -oP mutation.score.[0-9.]+ mutation_results.txt || echo 0)"
     - echo "MUTATION_SCORE=$score"
   artifacts:
     paths:

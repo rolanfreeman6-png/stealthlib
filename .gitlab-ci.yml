@@ -8,6 +8,8 @@ stages:
   - clang-tidy
   - cppcheck
   - coverage
+  - semgrep
+  - mutation
   - fuzz-hashes
   - fuzz-strings
   - fuzz-decoders
@@ -152,3 +154,33 @@ fuzz-decoders:
     - cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF -DSTEALTH_BUILD_FUZZER=ON -DSTEALTH_FUZZ_FLAGS="$FUZZ_FLAGS" -DSTEALTH_LIBFUZZER_LINKED=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
     - cmake --build build --target fuzz_decoders --parallel
     - ./build/tests/fuzz_decoders -max_total_time=3600 -print_final_stats=1
+
+semgrep:
+  stage: semgrep
+  image: returntocorp/semgrep
+  script:
+    - semgrep scan --config=p/c++ --config=p/security-audit --json > semgrep_results.json || true
+    - cat semgrep_results.json
+  artifacts:
+    paths:
+      - semgrep_results.json
+    when: always
+
+mutation:
+  stage: mutation
+  image: ubuntu:24.04
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq clang cmake make python3 wget
+  script:
+    - wget -q https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb -O mull.deb || true
+    - dpkg -i mull.deb 2>/dev/null || apt-get install -y -f -qq
+    - export MUT_FLAGS="-fembed-bitcode -std=c++20 -O1 -DSTEALTH_BUILD_KEY=$BUILD_KEY -I ."
+    - clang++ $MUT_FLAGS tests/string_test.cpp -o string_test_mull
+    - mull-runner string_test_mull --reporters=stdout > mutation_results.txt 2>&1 || true
+    - cat mutation_results.txt
+    - "score=$(grep -oP 'mutation score: \K[0-9.]+' mutation_results.txt || echo 0)"
+    - echo "MUTATION_SCORE=$score"
+  artifacts:
+    paths:
+      - mutation_results.txt
+    when: always

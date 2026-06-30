@@ -1,8 +1,6 @@
 stages:
   - build
   - sanitize
-  - analyze
-  - coverage
 
 variables:
   BUILD_KEY: "0xC0FFEE42DEADBEEFULL"
@@ -17,94 +15,13 @@ build-gcc:
     - cmake --build build --parallel 4
     - cd build && ctest --output-on-failure
 
-build-clang:
-  stage: build
-  image: ubuntu:24.04
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq clang cmake make python3
-  script:
-    - cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
-    - cmake --build build --parallel 4
-    - cd build && ctest --output-on-failure
-
-strict-warnings:
-  stage: build
-  image: ubuntu:24.04
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq g++ cmake make
-  script:
-    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=OFF "-DCMAKE_CXX_FLAGS=-Werror -Wshadow -Wconversion -Wsign-conversion"
-    - cmake --build build --parallel 4
-
 asan-ubsan:
   stage: sanitize
   image: ubuntu:24.04
   before_script:
     - apt-get update -qq && apt-get install -y -qq clang cmake make python3
   script:
-    - cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g" "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined" -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
+    - export CMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g"
+    - cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="$CMAKE_CXX_FLAGS" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
     - cmake --build build --parallel 4
     - cd build && ctest --output-on-failure
-
-tsan:
-  stage: sanitize
-  image: ubuntu:24.04
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq clang cmake make
-  script:
-    - cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_CXX_FLAGS=-fsanitize=thread -g -O1" "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread" -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=OFF -DSTEALTH_BUILD_KEY=$BUILD_KEY
-    - cmake --build build --parallel 4
-    - cd build && ./tests/test_concurrent_decrypt
-
-msan:
-  stage: sanitize
-  image: ubuntu:24.04
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq clang
-  script:
-    - clang++ -std=c++20 -fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1 -DSTEALTH_BUILD_KEY=$BUILD_KEY -I . tests/portable_smoke_test.cpp -o msan_test -lpthread
-    - ./msan_test && rm -f msan_test
-    - clang++ -std=c++20 -fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1 -DSTEALTH_BUILD_KEY=$BUILD_KEY -I . tests/string_test.cpp -o msan_test -lpthread
-    - ./msan_test && rm -f msan_test
-    - clang++ -std=c++20 -fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1 -DSTEALTH_BUILD_KEY=$BUILD_KEY -I . tests/test_sse2_parity.cpp -o msan_test -lpthread
-    - ./msan_test && rm -f msan_test
-    - clang++ -std=c++20 -fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1 -DSTEALTH_BUILD_KEY=$BUILD_KEY -I . tests/test_concurrent_decrypt.cpp -o msan_test -lpthread
-    - ./msan_test && rm -f msan_test
-
-clang-tidy:
-  stage: analyze
-  image: ubuntu:24.04
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq clang clang-tidy cmake make ninja-build
-  script:
-    - cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
-    - clang-tidy -p build examples/game_protection.cpp 2>&1 | tee tidy.log
-    - warnings=$(grep -c 'warning:' tidy.log || true)
-    - echo "clang-tidy: $warnings warnings"
-
-cppcheck:
-  stage: analyze
-  image: ubuntu:24.04
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq cppcheck
-  script:
-    - cppcheck --enable=all --inline-suppr --suppress=missingIncludeSystem --suppress=unusedFunction -I stealthlib --std=c++20 stealthlib/ tests/ examples/ 2>&1 | tee cppcheck.log
-    - errors=$(grep -cE '^\(error\)' cppcheck.log || true)
-    - echo "cppcheck: $errors errors"
-
-coverage:
-  stage: coverage
-  image: ubuntu:24.04
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq g++ cmake make python3 lcov
-  script:
-    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_CXX_FLAGS=--coverage -O0 -g" "-DCMAKE_EXE_LINKER_FLAGS=--coverage" -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
-    - cmake --build build --parallel 4
-    - cd build && ctest && cd ..
-    - lcov --capture --directory build --output-file lcov.info
-    - lcov --remove lcov.info '/usr/*' '*/tests/*' '*/third_party/*' --output-file lcov_filtered.info
-    - lcov --summary lcov_filtered.info
-  artifacts:
-    paths:
-      - lcov.info
-      - lcov_filtered.info

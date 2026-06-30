@@ -12,6 +12,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-orange)](https://en.cppreference.com/w/cpp/20)
 [![Coverage](https://img.shields.io/badge/coverage-94.6%25-brightgreen)](#verification-matrix)
+[![Mutation](https://img.shields.io/badge/mutation-37.5%25-yellow)](#mutation-testing)
+[![CodeQL](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml/badge.svg)](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml)
+[![Semgrep](https://img.shields.io/badge/SAST-Semgrep-blue)](https://gitlab.com/rolanfreeman6/stealthlib/-/pipelines)
 
 **9.5 / 10 — luxury-class, verified on 5 platforms**
 
@@ -265,6 +268,41 @@ stealthlib/
 | Function coverage | 99.4% (307/309) | — | ✓ |
 | Branch coverage (gcov) | 90.43% executed (170/188) | ≥75% | ✓ |
 
+### Mutation testing
+
+16 mutations applied across encryption, hashes, SHA-256, memory, and encoding modules. Each mutation was tested against all relevant test binaries.
+
+| Metric | Value |
+|--------|-------|
+| Total mutations | 16 |
+| Killed (tests caught) | 6 (37.5%) |
+| Survived (tests missed) | 10 (62.5%) |
+
+**What survived and why:**
+
+| Survived mutation | Why tests miss it |
+|-------------------|-------------------|
+| Encryption mask value change | Round-trip tests (encrypt→decrypt=original) pass with any mask — security is in obfuscation, not specific mask values |
+| FNV prime/basis ±1 | `test_hashes` checks non-zero, not specific known-answer values |
+| DJB2 shift amount | Same — no known-answer test for DJB2 |
+| base64/hex alphabet first char | Encode+decode use same mutated alphabet — round-trip passes |
+| rot13 shift 13→14 | Not tested in `string_test` (only in `portable_smoke_test` which may not exercise rot13) |
+| `secure_zero` 0→1 | Tests don't verify buffer is actually zeroed after call |
+| `xor_crypt` ^→+ | Not directly tested in selected test files |
+
+**What was killed (caught by tests):**
+
+| Killed mutation | Which test caught it |
+|-----------------|---------------------|
+| Encryption XOR ^→+ | `string_test` (decrypt produces garbage) |
+| Encryption buffer[N]=0→1 | `string_test` (NUL terminator missing) |
+| SHA-256 K[0] constant ±1 | `test_sha256` (KAT vector mismatch) |
+| SHA-256 h[0] initial ±1 | `test_sha256` (KAT vector mismatch) |
+| SHA-256 bits*8→bits*4 | `test_sha256` (length padding wrong) |
+| `compare_constant_time` ==0→!=0 | `portable_smoke_test` (logic inverted) |
+
+**Honest assessment:** 37.5% mutation score is below the industry target of ≥60%. The gap is in known-answer tests for hash functions and direct verification of encoding alphabets and zero-wipe correctness. Adding KAT tests for FNV/DJB2 and asserting specific base64/hex output values would raise the score to ~70%+.
+
 ### Other guarantees
 
 | Guarantee | How verified | Status |
@@ -286,7 +324,7 @@ stealthlib/
 | `linux-gcc` | ubuntu-latest | Build + 14/14 ctest |
 | `macos-clang` | macos-14 | Build + 14/14 ctest |
 
-### GitLab CI (heavy — 12 sequential jobs, ~3 hours)
+### GitLab CI (heavy — 14 sequential jobs, ~4 hours)
 
 | # | Job | What it does |
 |---|-----|-------------|
@@ -299,9 +337,17 @@ stealthlib/
 | 7 | `clang-tidy` | Static analysis with `.clang-tidy` config |
 | 8 | `cppcheck` | `--enable=all` static analysis |
 | 9 | `coverage` | lcov coverage report (≥85% line enforced) |
-| 10 | `fuzz-hashes` | libFuzzer 1h, ASan+UBSan, ~1B executions |
-| 11 | `fuzz-strings` | libFuzzer 1h, ASan+UBSan, ~1B executions |
-| 12 | `fuzz-decoders` | libFuzzer 1h, ASan+UBSan, ~1B executions |
+| 10 | `semgrep` | SAST: `p/c++` + `p/security-audit` rulesets |
+| 11 | `mutation` | Mull mutation testing (manual, 16 mutations) |
+| 12 | `fuzz-hashes` | libFuzzer 1h, ASan+UBSan, ~1B executions |
+| 13 | `fuzz-strings` | libFuzzer 1h, ASan+UBSan, ~1B executions |
+| 14 | `fuzz-decoders` | libFuzzer 1h, ASan+UBSan, ~1B executions |
+
+### GitHub CodeQL (SAST)
+
+| Job | What it does |
+|-----|-------------|
+| `CodeQL` | `security-extended` + `security-and-quality` queries on C++ code, runs on every push + weekly |
 
 ---
 

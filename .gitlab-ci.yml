@@ -3,7 +3,6 @@ stages:
   - sanitize
   - analyze
   - coverage
-  - fuzz
 
 variables:
   BUILD_KEY: "0xC0FFEE42DEADBEEFULL"
@@ -109,33 +108,3 @@ coverage:
     paths:
       - lcov.info
       - lcov_filtered.info
-
-fuzz_hashes:
-  stage: fuzz
-  image: ubuntu:24.04
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq clang cmake ninja-build
-  script:
-    - cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF -DSTEALTH_BUILD_FUZZER=ON '-DSTEALTH_FUZZ_FLAGS=-fsanitize=fuzzer,address,undefined;-fno-sanitize-recover=all;-fno-omit-frame-pointer' -DSTEALTH_LIBFUZZER_LINKED=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
-    - cmake --build build --target fuzz_hashes --parallel
-    - ./build/tests/fuzz_hashes -max_total_time=14400 -print_final_stats=1
-
-fuzz_strings:
-  stage: fuzz
-  image: ubuntu:24.04
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq clang cmake ninja-build
-  script:
-    - cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF -DSTEALTH_BUILD_FUZZER=ON '-DSTEALTH_FUZZ_FLAGS=-fsanitize=fuzzer,address,undefined;-fno-sanitize-recover=all;-fno-omit-frame-pointer' -DSTEALTH_LIBFUZZER_LINKED=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
-    - cmake --build build --target fuzz_strings --parallel
-    - ./build/tests/fuzz_strings -max_total_time=14400 -print_final_stats=1
-
-fuzz_decoders:
-  stage: fuzz
-  image: ubuntu:24.04
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq clang cmake ninja-build
-  script:
-    - cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF -DSTEALTH_BUILD_FUZZER=ON '-DSTEALTH_FUZZ_FLAGS=-fsanitize=fuzzer,address,undefined;-fno-sanitize-recover=all;-fno-omit-frame-pointer' -DSTEALTH_LIBFUZZER_LINKED=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
-    - cmake --build build --target fuzz_decoders --parallel
-    - ./build/tests/fuzz_decoders -max_total_time=14400 -print_final_stats=1

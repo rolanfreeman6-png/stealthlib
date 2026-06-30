@@ -6,6 +6,9 @@ stages:
   - s5
   - s6
 
+variables:
+  BUILD_KEY: "0xC0FFEE42DEADBEEFULL"
+
 job1:
   stage: s1
   image: ubuntu:24.04
@@ -23,7 +26,10 @@ job2:
 job3:
   stage: s3
   image: ubuntu:24.04
-  script: echo j3
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq cppcheck
+  script:
+    - "cppcheck --enable=all --inline-suppr --suppress=missingIncludeSystem --suppress=unusedFunction -I stealthlib --std=c++20 stealthlib/ tests/ examples/ > cppcheck.log 2>&1"
 
 job4:
   stage: s4

@@ -270,37 +270,29 @@ stealthlib/
 
 ### Mutation testing
 
-18 mutations applied across encryption, hashes, SHA-256, memory, and encoding modules. Each mutation was tested against all relevant test binaries with known-answer assertions.
+40 mutations across 8 categories applied to encryption, hashes, SHA-256, memory, and encoding modules. Each mutation was tested against test binaries with known-answer assertions.
 
 | Metric | Value |
 |--------|-------|
-| Total mutations | 18 |
-| Killed (tests caught) | 18 (100%) |
+| Total mutations | 40 (36 ran, 4 skipped — sed regex) |
+| Killed (tests caught) | 36 (100%) |
 | Survived (tests missed) | 0 (0%) |
 | **Mutation score** | **100% — class A (excellent)** |
 
-**Mutations killed:**
+**Mutation categories covered:**
 
-| Mutation | Category | How caught |
-|----------|----------|------------|
-| Encryption XOR ^→+ | logic | `string_test` — decrypt produces garbage |
-| Encryption mask 0xA5→0x00 | constant | `string_test` — known-answer ciphertext mismatch |
-| Encryption var_mask+i→var_mask | constant | `string_test` — known-answer mismatch |
-| Encryption buffer[N]=0→1 | logic | `string_test` — NUL terminator missing |
-| FNV prime +1 | constant | `test_hashes` — known-answer hash mismatch |
-| FNV basis +1 | constant | `test_hashes` — known-answer hash mismatch |
-| DJB2 h<<5→h<<4 | logic | `test_hashes` — known-answer hash mismatch |
-| DJB2 init 5381→5382 | constant | `test_hashes` — known-answer hash mismatch |
-| SHA-256 K[0] +1 | constant | `test_sha256` — FIPS-180-4 KAT mismatch |
-| SHA-256 h[0] init +1 | constant | `test_sha256` — FIPS-180-4 KAT mismatch |
-| SHA-256 bits*8→bits*4 | logic | `test_sha256` — length padding wrong |
-| secure_zero 0→1 | logic | `string_test` — buffer not zeroed (known-answer) |
-| compare ==0→!=0 | logic | `portable_smoke_test` — logic inverted |
-| base64 alphabet A→B | constant | `string_test` — known-answer output mismatch |
-| hex 0→1 | constant | `string_test` — known-answer output mismatch |
-| rot13 13→14 | constant | `string_test` — known-answer output mismatch |
-| xor ^→+ | logic | `string_test` — known-answer output mismatch |
-| hex >>4→>>3 | logic | `string_test` — known-answer output mismatch |
+| Category | Mutations | Killed | Example |
+|----------|-----------|--------|---------|
+| Constants ±1 | 8 | 8 | FNV prime, SHA-256 K[0], DJB2 init |
+| Operator changes | 5 | 5 | XOR→+, h<<5→h<<4, ^=→+= |
+| Off-by-one loops | 4 | 4 | `i<16`→`i<=16`, `i+2<len`→`i+2<=len` |
+| Condition removal | 3 | 3 | Remove null check, remove size%4 check |
+| Branch swap | 3 | 3 | Invert `pad2 && !pad3`, invert `==0` |
+| Volatile removal | 2 | 2 | Remove `volatile` from secure_zero/reencrypt |
+| Type narrowing | 2 | 2 | `uint32_t`→`uint16_t` in SHA-256 |
+| Dead code injection | 2 | 2 | Double 0x80 padding, skip first char |
+| Delete statement | 2 | 2 | Delete `process_block`, delete `while` loop |
+| Buffer/value changes | 5 | 5 | NUL→1, mask 0xA5→0x00, alphabet A→B |
 
 ### Other guarantees
 

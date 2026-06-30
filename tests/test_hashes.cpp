@@ -50,6 +50,26 @@ TEST_CASE("hash invariant: identical inputs -> identical hashes") {
     }
 }
 
+TEST_CASE("hash known-answer: FNV-1a 64-bit") {
+    CHECK(stealth::hashes::fnv("hello") == 0xa430d84680aabd0bULL);
+    CHECK(stealth::hashes::fnv("test") == 0xf9e6e6ef197c2b25ULL);
+    CHECK(stealth::hashes::fnv("kernel32.dll") == 0xe14b18a7acf9c443ULL);
+    CHECK(stealth::hashes::fnv("MessageBoxW") == 0x1e308b27ba21f56eULL);
+    CHECK(stealth::hashes::fnv("") == 0xcbf29ce484222325ULL);
+}
+
+TEST_CASE("hash known-answer: DJB2") {
+    CHECK(stealth::hashes::djb2("hello", 5) == 0x000000310f923099ULL);
+    CHECK(stealth::hashes::djb2("test", 4) == 0x000000017c9e6865ULL);
+    CHECK(stealth::hashes::djb2("", 0) == 0x0000000000001505ULL);
+}
+
+TEST_CASE("hash known-answer: runtime == fnv for known inputs") {
+    CHECK(stealth::hashes::runtime("hello") == 0xa430d84680aabd0bULL);
+    CHECK(stealth::hashes::runtime("test") == 0xf9e6e6ef197c2b25ULL);
+    CHECK(stealth::hashes::runtime("kernel32.dll") == 0xe14b18a7acf9c443ULL);
+}
+
 TEST_CASE("hash invariant: runtime fnv == fnv(ptr, len)") {
     for (std::size_t i = 0; i < N_SEEDS; ++i) {
         std::string s = rand_string();

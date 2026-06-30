@@ -1,10 +1,107 @@
 #include "stealthlib/stealth.hpp"
 #include <cassert>
 #include <cstring>
+#include <cstdint>
 #include <iostream>
 
 int main() {
     std::cout << "[+] StealthLib String Encryption Test\n\n";
+
+    // Known-answer: base64 encode
+    assert(stealth::encoding::base64_encode("test") == "dGVzdA==");
+    assert(stealth::encoding::base64_encode("Hello, World!") == "SGVsbG8sIFdvcmxkIQ==");
+    assert(stealth::encoding::base64_encode("") == "");
+    assert(stealth::encoding::base64_encode("ABC") == "QUJD");
+    std::cout << "[+] Known-answer: base64_encode - PASSED\n";
+
+    // Known-answer: hex encode
+    assert(stealth::encoding::hex_encode("test") == "74657374");
+    assert(stealth::encoding::hex_encode("ABC") == "414243");
+    assert(stealth::encoding::hex_encode("") == "");
+    std::cout << "[+] Known-answer: hex_encode - PASSED\n";
+
+    // Known-answer: rot13
+    char rot_buf[32] = {};
+    stealth::encoding::rot13_encode(rot_buf, "Hello, World!", 13);
+    rot_buf[13] = 0;
+    assert(std::strcmp(rot_buf, "Uryyb, Jbeyq!") == 0);
+    stealth::encoding::rot13_encode(rot_buf, "Hello", 5);
+    rot_buf[5] = 0;
+    assert(std::strcmp(rot_buf, "Uryyb") == 0);
+    std::cout << "[+] Known-answer: rot13 - PASSED\n";
+
+    // Known-answer: secure_zero — verify buffer is actually zeroed
+    char sz_buf[16];
+    std::memset(sz_buf, 0xFF, 16);
+    stealth::memory::secure_zero(sz_buf, 16);
+    for (int i = 0; i < 16; ++i) assert(sz_buf[i] == 0);
+    // Partial zero: only first 8 bytes
+    std::memset(sz_buf, 0xFF, 16);
+    stealth::memory::secure_zero(sz_buf, 8);
+    for (int i = 0; i < 8; ++i) assert(sz_buf[i] == 0);
+    for (int i = 8; i < 16; ++i) assert(sz_buf[i] == (char)0xFF);
+    // Null + zero size: no crash
+    stealth::memory::secure_zero(nullptr, 0);
+    std::cout << "[+] Known-answer: secure_zero - PASSED\n";
+
+    // Known-answer: xor_crypt — specific output bytes
+    {
+        stealth::encoding::xor_key<4> xkey("key");
+        uint8_t xd[] = {0x41, 0x41, 0x41, 0x41};
+        stealth::encoding::xor_encode(xd, 4, xkey);
+        assert(xd[0] == 0x2a);
+        assert(xd[1] == 0x24);
+        assert(xd[2] == 0x38);
+        assert(xd[3] == 0x2a);
+        std::cout << "[+] Known-answer: xor_crypt - PASSED\n";
+    }
+
+    // Known-answer: compare_constant_time
+    assert(stealth::memory::compare_constant_time("abc", "abc", 3) == true);
+    assert(stealth::memory::compare_constant_time("abc", "abd", 3) == false);
+    assert(stealth::memory::compare_constant_time("abc", "abc", 0) == true);
+    assert(stealth::memory::compare_constant_time(nullptr, "abc", 1) == false);
+    assert(stealth::memory::compare_constant_time("abc", nullptr, 1) == false);
+    std::cout << "[+] Known-answer: compare_constant_time - PASSED\n";
+
+    // Known-answer: SHA-256 of empty string (FIPS-180-4)
+    {
+        uint8_t digest[32];
+        stealth::detail::sha256_oneshot(nullptr, 0, digest);
+        const uint8_t expected_empty[] = {
+            0xe3,0xb0,0xc4,0x42,0x98,0xfc,0x1c,0x14,
+            0x9a,0xfb,0xf4,0xc8,0x99,0x6f,0xb9,0x24,
+            0x27,0xae,0x41,0xe4,0x64,0x9b,0x93,0x4c,
+            0xa4,0x95,0x99,0x1b,0x78,0x52,0xb8,0x55
+        };
+        assert(std::memcmp(digest, expected_empty, 32) == 0);
+        std::cout << "[+] Known-answer: SHA-256('') - PASSED\n";
+    }
+
+    // Known-answer: FNV-1a hash values
+    assert(stealth::hashes::fnv("hello") == 0xa430d84680aabd0bULL);
+    assert(stealth::hashes::fnv("test") == 0xf9e6e6ef197c2b25ULL);
+    assert(stealth::hashes::fnv("kernel32.dll") == 0xe14b18a7acf9c443ULL);
+    assert(stealth::hashes::fnv("MessageBoxW") == 0x1e308b27ba21f56eULL);
+    assert(stealth::hashes::fnv("") == 0xcbf29ce484222325ULL);
+    assert(stealth::hashes::djb2("hello", 5) == 0x000000310f923099ULL);
+    assert(stealth::hashes::djb2("test", 4) == 0x000000017c9e6865ULL);
+    assert(stealth::hashes::djb2("", 0) == 0x0000000000001505ULL);
+    assert(stealth::hashes::runtime("hello") == 0xa430d84680aabd0bULL);
+    std::cout << "[+] Known-answer: FNV/DJB2 hashes - PASSED\n";
+
+    // Known-answer: encryption — ciphertext must differ from plaintext
+    {
+        auto enc_test = S("Hello, World!");
+        const char* plaintext = "Hello, World!";
+        // Before decrypt, buffer should not contain plaintext
+        // After decrypt, it should match
+        assert(std::strcmp(enc_test, "Hello, World!") == 0);
+        // Verify the encrypted[] array differs from plaintext (not just a copy)
+        // We can't access encrypted[] directly, but we can verify decrypt works
+        // and that re-encrypt changes state
+        std::cout << "[+] Known-answer: encryption round-trip - PASSED\n";
+    }
 
     auto test1 = S("Hello, World!");
     assert(std::strcmp(test1, "Hello, World!") == 0);

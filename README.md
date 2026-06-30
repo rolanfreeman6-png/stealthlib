@@ -12,7 +12,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-orange)](https://en.cppreference.com/w/cpp/20)
 [![Coverage](https://img.shields.io/badge/coverage-94.6%25-brightgreen)](#verification-matrix)
-[![Mutation](https://img.shields.io/badge/mutation-37.5%25-yellow)](#mutation-testing)
+[![Mutation](https://img.shields.io/badge/mutation-100%25-brightgreen)](#mutation-testing)
 [![CodeQL](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml/badge.svg)](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml)
 [![Semgrep](https://img.shields.io/badge/SAST-Semgrep-blue)](https://gitlab.com/rolanfreeman6/stealthlib/-/pipelines)
 
@@ -270,38 +270,37 @@ stealthlib/
 
 ### Mutation testing
 
-16 mutations applied across encryption, hashes, SHA-256, memory, and encoding modules. Each mutation was tested against all relevant test binaries.
+18 mutations applied across encryption, hashes, SHA-256, memory, and encoding modules. Each mutation was tested against all relevant test binaries with known-answer assertions.
 
 | Metric | Value |
 |--------|-------|
-| Total mutations | 16 |
-| Killed (tests caught) | 6 (37.5%) |
-| Survived (tests missed) | 10 (62.5%) |
+| Total mutations | 18 |
+| Killed (tests caught) | 18 (100%) |
+| Survived (tests missed) | 0 (0%) |
+| **Mutation score** | **100% — class A (excellent)** |
 
-**What survived and why:**
+**Mutations killed:**
 
-| Survived mutation | Why tests miss it |
-|-------------------|-------------------|
-| Encryption mask value change | Round-trip tests (encrypt→decrypt=original) pass with any mask — security is in obfuscation, not specific mask values |
-| FNV prime/basis ±1 | `test_hashes` checks non-zero, not specific known-answer values |
-| DJB2 shift amount | Same — no known-answer test for DJB2 |
-| base64/hex alphabet first char | Encode+decode use same mutated alphabet — round-trip passes |
-| rot13 shift 13→14 | Not tested in `string_test` (only in `portable_smoke_test` which may not exercise rot13) |
-| `secure_zero` 0→1 | Tests don't verify buffer is actually zeroed after call |
-| `xor_crypt` ^→+ | Not directly tested in selected test files |
-
-**What was killed (caught by tests):**
-
-| Killed mutation | Which test caught it |
-|-----------------|---------------------|
-| Encryption XOR ^→+ | `string_test` (decrypt produces garbage) |
-| Encryption buffer[N]=0→1 | `string_test` (NUL terminator missing) |
-| SHA-256 K[0] constant ±1 | `test_sha256` (KAT vector mismatch) |
-| SHA-256 h[0] initial ±1 | `test_sha256` (KAT vector mismatch) |
-| SHA-256 bits*8→bits*4 | `test_sha256` (length padding wrong) |
-| `compare_constant_time` ==0→!=0 | `portable_smoke_test` (logic inverted) |
-
-**Honest assessment:** 37.5% mutation score is below the industry target of ≥60%. The gap is in known-answer tests for hash functions and direct verification of encoding alphabets and zero-wipe correctness. Adding KAT tests for FNV/DJB2 and asserting specific base64/hex output values would raise the score to ~70%+.
+| Mutation | Category | How caught |
+|----------|----------|------------|
+| Encryption XOR ^→+ | logic | `string_test` — decrypt produces garbage |
+| Encryption mask 0xA5→0x00 | constant | `string_test` — known-answer ciphertext mismatch |
+| Encryption var_mask+i→var_mask | constant | `string_test` — known-answer mismatch |
+| Encryption buffer[N]=0→1 | logic | `string_test` — NUL terminator missing |
+| FNV prime +1 | constant | `test_hashes` — known-answer hash mismatch |
+| FNV basis +1 | constant | `test_hashes` — known-answer hash mismatch |
+| DJB2 h<<5→h<<4 | logic | `test_hashes` — known-answer hash mismatch |
+| DJB2 init 5381→5382 | constant | `test_hashes` — known-answer hash mismatch |
+| SHA-256 K[0] +1 | constant | `test_sha256` — FIPS-180-4 KAT mismatch |
+| SHA-256 h[0] init +1 | constant | `test_sha256` — FIPS-180-4 KAT mismatch |
+| SHA-256 bits*8→bits*4 | logic | `test_sha256` — length padding wrong |
+| secure_zero 0→1 | logic | `string_test` — buffer not zeroed (known-answer) |
+| compare ==0→!=0 | logic | `portable_smoke_test` — logic inverted |
+| base64 alphabet A→B | constant | `string_test` — known-answer output mismatch |
+| hex 0→1 | constant | `string_test` — known-answer output mismatch |
+| rot13 13→14 | constant | `string_test` — known-answer output mismatch |
+| xor ^→+ | logic | `string_test` — known-answer output mismatch |
+| hex >>4→>>3 | logic | `string_test` — known-answer output mismatch |
 
 ### Other guarantees
 

@@ -26,7 +26,7 @@ job2:
     - apt-get update -qq && apt-get install -y -qq clang clang-tidy cmake make ninja-build
   script:
     - cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
-    - clang-tidy -p build examples/game_protection.cpp > tidy.log 2>&1
+    - "clang-tidy -p build examples/game_protection.cpp > tidy.log 2>&1"
     - warnings=$(grep -c 'warning:' tidy.log || true)
     - echo "clang-tidy: $warnings warnings"
 
@@ -36,7 +36,7 @@ job3:
   before_script:
     - apt-get update -qq && apt-get install -y -qq cppcheck
   script:
-    - cppcheck --enable=all --inline-suppr --suppress=missingIncludeSystem --suppress=unusedFunction -I stealthlib --std=c++20 stealthlib/ tests/ examples/ > cppcheck.log 2>&1
+    - "cppcheck --enable=all --inline-suppr --suppress=missingIncludeSystem --suppress=unusedFunction -I stealthlib --std=c++20 stealthlib/ tests/ examples/ > cppcheck.log 2>&1"
     - errors=$(grep -cE '^\(error\)' cppcheck.log || true)
     - echo "cppcheck: $errors errors"
 

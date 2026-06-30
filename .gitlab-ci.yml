@@ -54,6 +54,6 @@ clang-tidy:
     - apt-get update -qq && apt-get install -y -qq clang clang-tidy cmake make ninja-build
   script:
     - cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=$BUILD_KEY
-    - clang-tidy -p build examples/game_protection.cpp 2>&1 | tee tidy.log
+    - clang-tidy -p build examples/game_protection.cpp > tidy.log 2>&1
     - warnings=$(grep -c 'warning:' tidy.log || true)
     - echo "clang-tidy: $warnings warnings"

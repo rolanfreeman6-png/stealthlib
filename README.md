@@ -386,6 +386,7 @@ See [`docs/THREADING.md`](docs/THREADING.md) for the full happens-before analysi
 | [docs/HARDENING_REPORT.md](docs/HARDENING_REPORT.md) | Hardening measures applied |
 | [docs/SECURITY.md](docs/SECURITY.md) | Security policy |
 | [AUDIT_v2.1.3_RESPONSE.md](AUDIT_v2.1.3_RESPONSE.md) | 22 audit findings, all FIXED with commit SHAs |
+| [docs/AUDIT_REPORT.html](docs/AUDIT_REPORT.html) | Independent audit results — PVS-Studio + SonarCloud + CodeQL + Semgrep |
 
 ---
 

@@ -28,6 +28,11 @@ struct encrypted_string_impl {
         : decrypted(false) {
         static_assert(M == N + 1, "StealthLib: literal length mismatch");
         constexpr uint8_t mask_table[16] = {
+            0xA5,0xB6,0xC7,0xD8, 0xE9,0xFA,0x0B,0x1C,
+            0x2D,0x3E,0x4F,0x50, 0x61,0x72,0x83,0x94
+        };
+        constexpr uint8_t var_mask = mask_table[STEALTH_BUILD_KEY % 16];
+        for (size_t i = 0; i < N; ++i) {
             uint8_t b = static_cast<uint8_t>(src[i]) ^ derive_byte(Idx, i % 8, mix(0xAAAA));
             b ^= static_cast<uint8_t>(var_mask + (i & 0x0F));
             encrypted[i] = static_cast<char>(b);

@@ -20,16 +20,22 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ make python3 ninja-build
-      - name: Generate compile_commands.json
+          sudo apt-get install -y cmake g++ make python3 ninja-build lcov
+      - name: Build with coverage
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DSTEALTH_BUILD_EXAMPLES=ON \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="--coverage -O0 -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage" \
+            -DSTEALTH_BUILD_EXAMPLES=OFF \
             -DSTEALTH_BUILD_TESTS=ON \
-            -DSTEALTH_BUILD_FIXTURES=OFF \
+            -DSTEALTH_BUILD_FIXTURES=ON \
             -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
+          cmake --build build --parallel 4
+          cd build && ctest && cd ..
+          lcov --capture --directory build --output-file lcov.info --ignore-errors negative
+          lcov --remove lcov.info /usr/* tests/* third_party/* --output-file lcov_filtered.info --ignore-errors unused
       - name: Install SonarScanner
         run: |
           wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${{ env.SONAR_SCANNER_VERSION }}-linux.zip
@@ -47,4 +53,5 @@ jobs:
             -Dsonar.cfamily.compile-commands=build/compile_commands.json \
             -Dsonar.coverage.exclusions=tests/**,examples/**,benchmark/**,tests/third_party/** \
             -Dsonar.cfamily.cpp.version=20 \
+            -Dsonar.coverageReportPaths=lcov_filtered.info \
             -Dsonar.host.url=${{ env.SONAR_SERVER_URL }}

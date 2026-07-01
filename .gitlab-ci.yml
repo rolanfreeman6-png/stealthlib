@@ -176,14 +176,14 @@ mutation:
   timeout: 2 hours
   before_script:
     - apt-get update -qq
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wget gnupg2 g++ bc
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wget gnupg2 g++ bc file
     - wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
     - echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" > /etc/apt/sources.list.d/llvm.list
     - apt-get update -qq
     - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang-16 llvm-16-dev libllvm16
   script:
-    - curl -sL -o /tmp/mull.deb https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb
-    - file /tmp/mull.deb | grep -q "Debian binary package" && echo "Valid .deb" || (echo "Invalid .deb — trying wget" && wget -qL -O /tmp/mull.deb https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb && file /tmp/mull.deb)
+    - wget -qL -O /tmp/mull.deb https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb
+    - file /tmp/mull.deb
     - dpkg -i /tmp/mull.deb 2>&1 || apt-get install -y -f -qq 2>&1 || true
     - which mull-runner-16 && echo "Mull installed!" || echo "Mull not found — fallback to manual"
     - export CC=clang-16 CXX=clang++-16 KEY="-DSTEALTH_BUILD_KEY=$BUILD_KEY" INC="-I . -I tests/third_party"

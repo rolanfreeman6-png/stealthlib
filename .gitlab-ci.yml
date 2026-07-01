@@ -181,20 +181,10 @@ mutation:
   script:
     - wget -q https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb -O /tmp/mull.deb || true
     - dpkg -i /tmp/mull.deb 2>&1 || apt-get install -y -f -qq 2>&1 || true
-    - export CC=clang-16
-    - export CXX=clang++-16
-    - export KEY="-DSTEALTH_BUILD_KEY=$BUILD_KEY"
-    - export INC="-I . -I tests/third_party"
-    - if command -v mull-runner-16 >/dev/null 2>&1; then
-    -   $CXX -fembed-bitcode -std=c++20 -O1 $KEY $INC tests/string_test.cpp -o string_test_mull -lpthread
-    -   mull-runner-16 string_test_mull --reporters=stdout --mutators=all --timeout=5000 > mutation_results.txt 2>&1 || true
-    -   cat mutation_results.txt
-    - else
-    -   echo "mull-runner-16 not found — using manual mutation script"
-    -   chmod +x tools/mutation_test.sh
-    -   ./tools/mutation_test.sh > mutation_results.txt 2>&1 || true
-    -   cat mutation_results.txt
-    - fi
+    - export CC=clang-16 CXX=clang++-16 KEY="-DSTEALTH_BUILD_KEY=$BUILD_KEY" INC="-I . -I tests/third_party"
+    - clang++-16 -fembed-bitcode -std=c++20 -O1 $KEY $INC tests/string_test.cpp -o string_test_mull -lpthread 2>/dev/null && mull-runner-16 string_test_mull --reporters=stdout --mutators=all --timeout=5000 > mutation_results.txt 2>&1 || true
+    - if [ ! -s mutation_results.txt ]; then chmod +x tools/mutation_test.sh && ./tools/mutation_test.sh > mutation_results.txt 2>&1 || true; fi
+    - cat mutation_results.txt
   artifacts:
     paths:
       - mutation_results.txt

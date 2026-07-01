@@ -182,8 +182,10 @@ mutation:
     - apt-get update -qq
     - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang-16 llvm-16-dev libllvm16
   script:
-    - wget -q https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb -O /tmp/mull.deb || true
+    - curl -sL -o /tmp/mull.deb https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb
+    - file /tmp/mull.deb | grep -q "Debian binary package" && echo "Valid .deb" || (echo "Invalid .deb — trying wget" && wget -qL -O /tmp/mull.deb https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb && file /tmp/mull.deb)
     - dpkg -i /tmp/mull.deb 2>&1 || apt-get install -y -f -qq 2>&1 || true
+    - which mull-runner-16 && echo "Mull installed!" || echo "Mull not found — fallback to manual"
     - export CC=clang-16 CXX=clang++-16 KEY="-DSTEALTH_BUILD_KEY=$BUILD_KEY" INC="-I . -I tests/third_party"
     - clang++-16 -fembed-bitcode -std=c++20 -O1 $KEY $INC tests/string_test.cpp -o string_test_mull -lpthread 2>/dev/null && mull-runner-16 string_test_mull --reporters=stdout --mutators=all --timeout=5000 > mutation_results.txt 2>&1 || true
     - if [ ! -s mutation_results.txt ]; then chmod +x tools/mutation_test.sh && ./tools/mutation_test.sh > mutation_results.txt 2>&1 || true; fi

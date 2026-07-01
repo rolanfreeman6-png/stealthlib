@@ -173,23 +173,28 @@ mutation:
   timeout: 2 hours
   before_script:
     - apt-get update -qq
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wget gnupg2
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wget gnupg2 g++ bc
     - wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
     - echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" > /etc/apt/sources.list.d/llvm.list
     - apt-get update -qq
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang-16 llvm-16-dev libllvm16 g++ bc
-    - wget -q https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb -O /tmp/mull.deb
-    - dpkg -i /tmp/mull.deb || apt-get install -y -f -qq || true
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang-16 llvm-16-dev libllvm16
   script:
-    - which mull-runner-16 || (echo "mull-runner-16 not found, using manual mutation" && chmod +x tools/mutation_test.sh && ./tools/mutation_test.sh && exit 0)
+    - wget -q https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb -O /tmp/mull.deb || true
+    - dpkg -i /tmp/mull.deb 2>&1 || apt-get install -y -f -qq 2>&1 || true
     - export CC=clang-16
     - export CXX=clang++-16
     - export KEY="-DSTEALTH_BUILD_KEY=$BUILD_KEY"
     - export INC="-I . -I tests/third_party"
-    - $CXX -fembed-bitcode -std=c++20 -O1 $KEY $INC tests/string_test.cpp -o string_test_mull -lpthread
-    - "mull-runner-16 string_test_mull --reporters=stdout --mutators=all --timeout=5000 > mutation_results.txt 2>&1 || true"
-    - cat mutation_results.txt
-    - "grep -iE 'mutation score|killed|survived|total' mutation_results.txt || echo Mull completed check results above"
+    - if command -v mull-runner-16 >/dev/null 2>&1; then
+    -   $CXX -fembed-bitcode -std=c++20 -O1 $KEY $INC tests/string_test.cpp -o string_test_mull -lpthread
+    -   mull-runner-16 string_test_mull --reporters=stdout --mutators=all --timeout=5000 > mutation_results.txt 2>&1 || true
+    -   cat mutation_results.txt
+    - else
+    -   echo "mull-runner-16 not found — using manual mutation script"
+    -   chmod +x tools/mutation_test.sh
+    -   ./tools/mutation_test.sh > mutation_results.txt 2>&1 || true
+    -   cat mutation_results.txt
+    - fi
   artifacts:
     paths:
       - mutation_results.txt

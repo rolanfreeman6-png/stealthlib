@@ -18,7 +18,7 @@
 [![PVS-Studio](https://img.shields.io/badge/PVS--Studio-0%20findings-brightgreen)](#pvs-studio)
 [![Semgrep](https://img.shields.io/badge/SAST-Semgrep-blue)](https://gitlab.com/rolanfreeman6/stealthlib/-/pipelines)
 
-**9.5 / 10 — luxury-class, verified on 5 platforms**
+**9.5 / 10 — luxury-class, verified on 5 platforms, independently audited by PVS-Studio + SonarCloud + CodeQL**
 
 </div>
 
@@ -243,7 +243,7 @@ stealthlib/
 | clang-tidy-18 | `.clang-tidy` config, 116,507 checks suppressed | 974 shown, 2 real `bugprone` findings (out-of-scope) |
 | cppcheck | `--enable=all --inline-suppr` | 0 errors, 0 performance, 0 real warnings |
 | MSVC `/analyze` | SAL annotations | 0 unsuppressed in our code (1 in SDK `winreg.h`) |
-| **SonarCloud** | `security-extended` + `security-and-quality` | See [SonarCloud dashboard](https://sonarcloud.io/dashboard?id=rolanfreeman6-png_stealthlib) |
+| **SonarCloud** | CI-based analysis, doctest.h excluded | ✓ **Reliability A · Security A · Maintainability A** — [dashboard](https://sonarcloud.io/dashboard?id=rolanfreeman6-png_stealthlib) |
 | **CodeQL** | `security-extended` + `security-and-quality` | ✓ CI green |
 | **Semgrep** | `p/c++` + `p/security-audit` rulesets | ✓ CI green |
 

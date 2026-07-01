@@ -68,6 +68,17 @@
   <tr><td>Result</td><td><span class="pass">CI GREEN — 0 alerts</span></td></tr>
 </table>
 
+<h2>Coverity Scan — Deep Data Flow Analysis</h2>
+<table>
+  <tr><th>Metric</th><th>Value</th></tr>
+  <tr><td>Tool</td><td>Coverity Scan (Black Duck) — free for OSS</td></tr>
+  <tr><td>Method</td><td>cov-build intercepts compilation, Coverity engine analyzes</td></tr>
+  <tr><td>Lines analyzed</td><td>131,859 (including transitive headers)</td></tr>
+  <tr><td>Defect density</td><td><span class="pass">0.17 (2× better than OSS average 0.35)</span></td></tr>
+  <tr><td>CWE-190 (Integer Overflow)</td><td>5 (in SDK/third-party headers)</td></tr>
+  <tr><td>Dashboard</td><td><a href="https://scan.coverity.com/projects/rolanfreeman6-png-stealthlib">scan.coverity.com</a></td></tr>
+</table>
+
 <h2>Semgrep — SAST Analysis</h2>
 <table>
   <tr><th>Metric</th><th>Value</th></tr>

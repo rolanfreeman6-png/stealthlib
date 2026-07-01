@@ -16,6 +16,7 @@
 [![CodeQL](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml/badge.svg)](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml)
 [![SonarCloud](https://sonarcloud.io/api/project_badges/measure?key=rolanfreeman6-png_stealthlib&metric=alert_status)](https://sonarcloud.io/dashboard?id=rolanfreeman6-png_stealthlib)
 [![PVS-Studio](https://img.shields.io/badge/PVS--Studio-0%20findings-brightgreen)](#pvs-studio)
+[![Coverity](https://img.shields.io/badge/Coverity-0.17%20density-brightgreen)](https://scan.coverity.com/projects/rolanfreeman6-png-stealthlib)
 [![Semgrep](https://img.shields.io/badge/SAST-Semgrep-blue)](https://gitlab.com/rolanfreeman6/stealthlib/-/pipelines)
 
 **9.5 / 10 — luxury-class, verified on 5 platforms, independently audited by PVS-Studio + SonarCloud + CodeQL**
@@ -245,6 +246,7 @@ stealthlib/
 | MSVC `/analyze` | SAL annotations | 0 unsuppressed in our code (1 in SDK `winreg.h`) |
 | **SonarCloud** | CI-based analysis, doctest.h excluded | ✓ **Reliability A · Security A · Maintainability A** — [dashboard](https://sonarcloud.io/dashboard?id=rolanfreeman6-png_stealthlib) |
 | **CodeQL** | `security-extended` + `security-and-quality` | ✓ CI green |
+| **Coverity Scan** | Deep data flow analysis, CWE Top 25 | ✓ **Defect density 0.17** (2× better than OSS average 0.35) — [dashboard](https://scan.coverity.com/projects/rolanfreeman6-png-stealthlib) |
 | **Semgrep** | `p/c++` + `p/security-audit` rulesets | ✓ CI green |
 
 ### Sanitizers

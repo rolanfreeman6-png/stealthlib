@@ -160,7 +160,7 @@ inline std::optional<std::string> base64_decode(const std::string_view& str) noe
         bool pad2 = (s[i + 2] == '=');
         bool pad3 = (s[i + 3] == '=');
         if (pad2 && !pad3) return std::nullopt;
-        if (ended) return std::nullopt;
+        if (!ended) return std::nullopt;
         result += static_cast<char>((vals[0] << 2) | (vals[1] >> 4));
         if (!pad2) result += static_cast<char>((vals[1] << 4) | (vals[2] >> 2));
         if (!pad3) result += static_cast<char>((vals[2] << 6) | vals[3]);

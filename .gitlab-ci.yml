@@ -126,6 +126,7 @@ coverage:
 fuzz-hashes:
   stage: fuzz-hashes
   image: ubuntu:24.04
+  timeout: 2 hours
   before_script:
     - apt-get update -qq && apt-get install -y -qq clang cmake ninja-build
   script:
@@ -137,6 +138,7 @@ fuzz-hashes:
 fuzz-strings:
   stage: fuzz-strings
   image: ubuntu:24.04
+  timeout: 2 hours
   before_script:
     - apt-get update -qq && apt-get install -y -qq clang cmake ninja-build
   script:
@@ -148,6 +150,7 @@ fuzz-strings:
 fuzz-decoders:
   stage: fuzz-decoders
   image: ubuntu:24.04
+  timeout: 2 hours
   before_script:
     - apt-get update -qq && apt-get install -y -qq clang cmake ninja-build
   script:

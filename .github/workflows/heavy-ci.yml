@@ -1,0 +1,165 @@
+name: Heavy CI
+
+# Heavy CI: sanitizers, static analysis, coverage, mutation, fuzz
+# Runs on GitHub Actions (unlimited for public repos)
+# Fast CI (build+test) runs in ci.yml
+
+on:
+  push:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 4 * * *'
+
+jobs:
+  asan-ubsan:
+    name: ASan + UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang cmake make python3
+      - run: |
+          export SAN_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g"
+          cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="$SAN_FLAGS" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+            -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=ON \
+            -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
+          cmake --build build --parallel 4
+          cd build && ctest --output-on-failure
+
+  tsan:
+    name: TSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang cmake make
+      - run: |
+          export TSAN_FLAGS="-fsanitize=thread -g -O1"
+          cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="$TSAN_FLAGS" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
+            -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=OFF \
+            -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
+          cmake --build build --parallel 4
+          cd build && ./tests/test_concurrent_decrypt
+          ./tests/test_deterministic_concurrency
+
+  msan:
+    name: MSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang
+      - run: |
+          export MSAN_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1"
+          for test in portable_smoke_test string_test test_sse2_parity test_concurrent_decrypt; do
+            clang++ -std=c++20 $MSAN_FLAGS -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL \
+              -I . tests/${test}.cpp -o ${test}_msan -lpthread
+            ./${test}_msan
+            rm -f ${test}_msan
+          done
+
+  strict-warnings:
+    name: Strict Warnings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y g++ cmake make
+      - run: |
+          export WARN_FLAGS="-Werror -Wshadow -Wconversion -Wsign-conversion"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_TESTS=ON \
+            -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=OFF \
+            -DCMAKE_CXX_FLAGS="$WARN_FLAGS"
+          cmake --build build --parallel 4
+
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang clang-tidy cmake make ninja-build
+      - run: |
+          cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=ON \
+            -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
+          clang-tidy -p build examples/game_protection.cpp > tidy.log 2>&1 || true
+          cat tidy.log
+
+  cppcheck:
+    name: cppcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - run: |
+          cppcheck --enable=all --inline-suppr --suppress=missingIncludeSystem \
+            --suppress=unusedFunction -I stealthlib --std=c++20 \
+            stealthlib/ tests/ examples/ > cppcheck.log 2>&1 || true
+          cat cppcheck.log
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y g++ cmake make python3 lcov
+      - run: |
+          export COV_FLAGS="--coverage -O0 -g -fprofile-update=atomic"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="$COV_FLAGS" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage" -DSTEALTH_BUILD_TESTS=ON \
+            -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_FIXTURES=ON \
+            -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
+          cmake --build build --parallel 4
+          cd build && ctest && cd ..
+          lcov --capture --directory build --output-file lcov.info --ignore-errors negative
+          lcov --remove lcov.info /usr/* tests/* third_party/* --output-file lcov_filtered.info --ignore-errors unused
+          lcov --summary lcov_filtered.info
+
+  mutation:
+    name: Mull Mutation Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y wget clang-18 llvm-18-dev libllvm18 g++ bc file
+      - run: |
+          wget -qL -O /tmp/mull.deb "https://github.com/mull-project/mull/releases/download/0.34.0/Mull-18-0.34.0-LLVM-18.1.3-ubuntu-amd64-24.04.deb" || true
+          dpkg -i /tmp/mull.deb 2>&1 || sudo apt-get install -y -f -qq 2>&1 || true
+          which mull-instrument-18 2>/dev/null && echo "Mull installed!" || echo "Mull not found — fallback to manual"
+          export KEY="-DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL" INC="-I . -I tests/third_party"
+          clang++-18 -emit-llvm -c -std=c++20 -O0 -g $KEY $INC tests/portable_smoke_test.cpp -o smoke.bc 2>/dev/null
+          mull-instrument-18 smoke.bc -o smoke_mut.bc 2>/dev/null
+          clang++-18 smoke_mut.bc -o smoke_mull -lpthread 2>/dev/null
+          mull-runner-18 smoke_mull --reporters=IDE --timeout=10000 > mutation_results.txt 2>&1 || true
+          if [ ! -s mutation_results.txt ]; then
+            chmod +x tools/mutation_test.sh
+            ./tools/mutation_test.sh > mutation_results.txt 2>&1 || true
+          fi
+          cat mutation_results.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutation-results
+          path: mutation_results.txt
+
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [fuzz_hashes, fuzz_strings, fuzz_decoders]
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build
+      - run: |
+          export FUZZ_FLAGS="-fsanitize=fuzzer,address,undefined;-fno-sanitize-recover=all;-fno-omit-frame-pointer"
+          cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ \
+            -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=OFF \
+            -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF \
+            -DSTEALTH_BUILD_FUZZER=ON -DSTEALTH_FUZZ_FLAGS="$FUZZ_FLAGS" \
+            -DSTEALTH_LIBFUZZER_LINKED=ON -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
+          cmake --build build --target ${{ matrix.target }} --parallel
+          ./build/tests/${{ matrix.target }} -max_total_time=3000 -print_final_stats=1

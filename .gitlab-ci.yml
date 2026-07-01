@@ -173,7 +173,11 @@ mutation:
   timeout: 2 hours
   before_script:
     - apt-get update -qq
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wget gnupg2 software-properties-common clang-16 llvm-16-dev libllvm16
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wget gnupg2 software-properties-common
+    - wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+    - add-apt-repository -y "deb http://apt.llvm.org/ubuntu/ llvm-toolchain-jammy-16 main"
+    - apt-get update -qq
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang-16 llvm-16-dev libllvm16
     - wget -q https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb -O /tmp/mull.deb
     - dpkg -i /tmp/mull.deb 2>/dev/null || apt-get install -y -f -qq
   script:

@@ -15,16 +15,20 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ make python3 wget curl
+          sudo apt-get install -y cmake g++ make python3 wget curl tar
       - name: Download Coverity Build Tool
         run: |
-          wget -q https://scan.coverity.com/download/cxx/linux64 \
-            --post-data "token=${{ secrets.COVERITY_TOKEN }}&project=rolanfreeman6-png%2Fstealthlib" \
-            -O cov-analysis-linux64.tar.gz
+          wget --no-verbose --no-check-certificate \
+            "https://scan.coverity.com/download/cxx/linux64?token=${{ secrets.COVERITY_TOKEN }}&project=rolanfreeman6-png%2Fstealthlib" \
+            -O cov-analysis-linux64.tar.gz || true
+          ls -la cov-analysis-linux64.tar.gz
+          file cov-analysis-linux64.tar.gz
           tar xzf cov-analysis-linux64.tar.gz
+          ls -la cov-analysis-linux64/
+          echo "$(pwd)/cov-analysis-linux64/bin" >> $GITHUB_PATH
       - name: Build with cov-build
         run: |
-          export PATH=$(pwd)/cov-analysis-linux64/bin:$PATH
+          cov-build --version
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
             -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON \
             -DSTEALTH_BUILD_FIXTURES=ON \
@@ -38,4 +42,4 @@ jobs:
                --form file=@stealthlib.tgz \
                --form version="v2.2.0" \
                --form description="StealthLib v2.2.0 Coverity Scan" \
-               https://scan.coverity.com/builds?project=rolanfreeman6-png%2Fstealthlib
+               "https://scan.coverity.com/builds?project=rolanfreeman6-png%2Fstealthlib"

@@ -17,8 +17,8 @@ constexpr std::size_t MAX_LEN = 24;
 
 // Deterministic PRNG with fixed seed for reproducible hash tests.
 // NOT used for cryptographic purposes — testing hash invariants only.
-std::mt19937_64& rng() {
-    static std::mt19937_64 eng{0xC0FFEE};
+std::mt19937_64& rng() {  // NOSONAR — deterministic test PRNG, not crypto
+    static std::mt19937_64 eng{0xC0FFEE};  // NOSONAR — fixed seed for reproducibility
     return eng;
 }
 

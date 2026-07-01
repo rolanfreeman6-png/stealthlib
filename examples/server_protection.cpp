@@ -9,9 +9,9 @@ int main() {
 
     std::cout << "[*] Protecting server configuration...\n\n";
 
-    // Example placeholder values — NOT real credentials.
+    // Example placeholder values — NOT real credentials. // NOSONAR
     // StealthLib encrypts these at compile time so they never appear in .rodata.
-    auto db_connection = S("Server=EXAMPLE.local;Database=example_db;User=example_user;Password=EXAMPLE_PLACEHOLDER_NOT_REAL");
+    auto db_connection = S("Server=EXAMPLE.local;Database=example_db;User=example_user;Password=EXAMPLE_PLACEHOLDER_NOT_REAL");  // NOSONAR — example placeholder
     std::cout << "[*] DB Connection String: " << db_connection << "\n";
 
     auto redis_password = S("example_placeholder_redis_token");

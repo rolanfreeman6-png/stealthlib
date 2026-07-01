@@ -21,25 +21,25 @@ int main() {
     std::cout << "[+] Known-answer: hex_encode - PASSED\n";
 
     // Known-answer: rot13
-    char rot_buf[32] = {};
-    stealth::encoding::rot13_encode(rot_buf, "Hello, World!", 13);
+    std::array<char, 32> rot_buf{};
+    stealth::encoding::rot13_encode(rot_buf.data(), "Hello, World!", 13);
     rot_buf[13] = 0;
-    assert(std::strcmp(rot_buf, "Uryyb, Jbeyq!") == 0);
-    stealth::encoding::rot13_encode(rot_buf, "Hello", 5);
+    assert(std::strcmp(rot_buf.data(), "Uryyb, Jbeyq!") == 0);
+    stealth::encoding::rot13_encode(rot_buf.data(), "Hello", 5);
     rot_buf[5] = 0;
-    assert(std::strcmp(rot_buf, "Uryyb") == 0);
+    assert(std::strcmp(rot_buf.data(), "Uryyb") == 0);
     std::cout << "[+] Known-answer: rot13 - PASSED\n";
 
     // Known-answer: secure_zero — verify buffer is actually zeroed
-    char sz_buf[16];
-    std::memset(sz_buf, 0xFF, 16);
-    stealth::memory::secure_zero(sz_buf, 16);
-    for (int i = 0; i < 16; ++i) assert(sz_buf[i] == 0);
+    std::array<char, 16> sz_buf{};
+    std::memset(sz_buf.data(), 0xFF, 16);
+    stealth::memory::secure_zero(sz_buf.data(), 16);
+    for (char c : sz_buf) assert(c == 0);
     // Partial zero: only first 8 bytes
-    std::memset(sz_buf, 0xFF, 16);
-    stealth::memory::secure_zero(sz_buf, 8);
+    std::memset(sz_buf.data(), 0xFF, 16);
+    stealth::memory::secure_zero(sz_buf.data(), 8);
     for (int i = 0; i < 8; ++i) assert(sz_buf[i] == 0);
-    for (int i = 8; i < 16; ++i) assert(sz_buf[i] == (char)0xFF);
+    for (int i = 8; i < 16; ++i) assert(sz_buf[i] == static_cast<char>(0xFF));
     // Null + zero size: no crash
     stealth::memory::secure_zero(nullptr, 0);
     std::cout << "[+] Known-answer: secure_zero - PASSED\n";
@@ -47,8 +47,8 @@ int main() {
     // Known-answer: xor_crypt — specific output bytes
     {
         stealth::encoding::xor_key<4> xkey("key");
-        uint8_t xd[] = {0x41, 0x41, 0x41, 0x41};
-        stealth::encoding::xor_encode(xd, 4, xkey);
+        std::array<uint8_t, 4> xd{0x41, 0x41, 0x41, 0x41};
+        stealth::encoding::xor_encode(xd.data(), 4, xkey);
         assert(xd[0] == 0x2a);
         assert(xd[1] == 0x24);
         assert(xd[2] == 0x38);
@@ -66,27 +66,27 @@ int main() {
 
     // Known-answer: SHA-256 of empty string (FIPS-180-4)
     {
-        uint8_t digest[32];
-        stealth::detail::sha256_oneshot(nullptr, 0, digest);
-        const uint8_t expected_empty[] = {
+        std::array<uint8_t, 32> digest{};
+        stealth::detail::sha256_oneshot(nullptr, 0, digest.data());
+        constexpr std::array<uint8_t, 32> expected_empty{
             0xe3,0xb0,0xc4,0x42,0x98,0xfc,0x1c,0x14,
             0x9a,0xfb,0xf4,0xc8,0x99,0x6f,0xb9,0x24,
             0x27,0xae,0x41,0xe4,0x64,0x9b,0x93,0x4c,
             0xa4,0x95,0x99,0x1b,0x78,0x52,0xb8,0x55
         };
-        assert(std::memcmp(digest, expected_empty, 32) == 0);
+        assert(std::memcmp(digest.data(), expected_empty.data(), 32) == 0);
         std::cout << "[+] Known-answer: SHA-256('') - PASSED\n";
     }
 
     // Known-answer: FNV-1a hash values
-    assert(stealth::hashes::fnv("hello") == 0xa430d84680aabd0bULL);
-    assert(stealth::hashes::fnv("test") == 0xf9e6e6ef197c2b25ULL);
-    assert(stealth::hashes::fnv("kernel32.dll") == 0xe14b18a7acf9c443ULL);
-    assert(stealth::hashes::fnv("MessageBoxW") == 0x1e308b27ba21f56eULL);
-    assert(stealth::hashes::fnv("") == 0xcbf29ce484222325ULL);
-    assert(stealth::hashes::djb2("hello", 5) == 0x000000310f923099ULL);
-    assert(stealth::hashes::djb2("test", 4) == 0x000000017c9e6865ULL);
-    assert(stealth::hashes::djb2("", 0) == 0x0000000000001505ULL);
+    static_assert(stealth::hashes::fnv("hello") == 0xa430d84680aabd0bULL);
+    static_assert(stealth::hashes::fnv("test") == 0xf9e6e6ef197c2b25ULL);
+    static_assert(stealth::hashes::fnv("kernel32.dll") == 0xe14b18a7acf9c443ULL);
+    static_assert(stealth::hashes::fnv("MessageBoxW") == 0x1e308b27ba21f56eULL);
+    static_assert(stealth::hashes::fnv("") == 0xcbf29ce484222325ULL);
+    static_assert(stealth::hashes::djb2("hello", 5) == 0x000000310f923099ULL);
+    static_assert(stealth::hashes::djb2("test", 4) == 0x000000017c9e6865ULL);
+    static_assert(stealth::hashes::djb2("", 0) == 0x0000000000001505ULL);
     assert(stealth::hashes::runtime("hello") == 0xa430d84680aabd0bULL);
     std::cout << "[+] Known-answer: FNV/DJB2 hashes - PASSED\n";
 

@@ -15,25 +15,26 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ make python3 wget curl tar
-      - name: Download Coverity Build Tool
+          sudo apt-get install -y cmake g++ make python3 wget curl
+      - name: Download and extract Coverity Build Tool
         run: |
-          wget --no-verbose --no-check-certificate \
+          wget --no-verbose \
             "https://scan.coverity.com/download/cxx/linux64?token=${{ secrets.COVERITY_TOKEN }}&project=rolanfreeman6-png%2Fstealthlib" \
-            -O cov-analysis-linux64.tar.gz || true
-          ls -la cov-analysis-linux64.tar.gz
-          file cov-analysis-linux64.tar.gz
-          tar xzf cov-analysis-linux64.tar.gz
-          ls -la cov-analysis-linux64/
-          echo "$(pwd)/cov-analysis-linux64/bin" >> $GITHUB_PATH
+            -O cov-analysis.tar.gz
+          tar xzf cov-analysis.tar.gz
+          # Find the extracted directory (name varies by version)
+          COV_DIR=$(find . -maxdepth 1 -type d -name "cov-analysis*" | head -1)
+          echo "Coverity dir: $COV_DIR"
+          echo "$(pwd)/$COV_DIR/bin" >> $GITHUB_PATH
+          echo "COV_BIN=$(pwd)/$COV_DIR/bin" >> $GITHUB_ENV
       - name: Build with cov-build
         run: |
-          cov-build --version
+          $COV_BIN/cov-build --version
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
             -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON \
             -DSTEALTH_BUILD_FIXTURES=ON \
             -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
-          cov-build --dir cov-int cmake --build build --parallel 4
+          $COV_BIN/cov-build --dir cov-int cmake --build build --parallel 4
       - name: Submit to Coverity Scan
         run: |
           tar czvf stealthlib.tgz cov-int

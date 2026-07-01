@@ -98,6 +98,7 @@ add_stealth_doctest_test(doctest_hwbp_test      test_hwbp.cpp)
 # Linux + pthreads. Built unconditionally so a TSan-stripped ctest still
 # builds/runs the test; users opt into TSan via CMAKE_CXX_FLAGS.
 add_stealth_test(test_concurrent_decrypt    test_concurrent_decrypt.cpp)
+add_stealth_test(test_deterministic_concurrency test_deterministic_concurrency.cpp)
 
 # --- Tier 2D: RTE scenarios ----------------------------------------------
 # Three real-world endurance tests covering the key compositions --

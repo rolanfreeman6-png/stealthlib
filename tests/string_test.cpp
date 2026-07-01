@@ -38,8 +38,8 @@ int main() {
     // Partial zero: only first 8 bytes
     std::memset(sz_buf.data(), 0xFF, 16);
     stealth::memory::secure_zero(sz_buf.data(), 8);
-    for (int i = 0; i < 8; ++i) assert(sz_buf[i] == 0);
-    for (int i = 8; i < 16; ++i) assert(sz_buf[i] == static_cast<char>(0xFF));
+    for (size_t i = 0; i < 8; ++i) assert(sz_buf[i] == 0);
+    for (size_t i = 8; i < 16; ++i) assert(sz_buf[i] == static_cast<char>(0xFF));
     // Null + zero size: no crash
     stealth::memory::secure_zero(nullptr, 0);
     std::cout << "[+] Known-answer: secure_zero - PASSED\n";

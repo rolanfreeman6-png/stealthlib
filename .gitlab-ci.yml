@@ -169,24 +169,20 @@ semgrep:
 
 mutation:
   stage: mutation
-  image: ubuntu:22.04
+  image: silkeh/clang:16
   timeout: 2 hours
   before_script:
     - apt-get update -qq
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wget gnupg2 software-properties-common
-    - wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
-    - add-apt-repository -y "deb http://apt.llvm.org/ubuntu/ llvm-toolchain-jammy-16 main"
-    - apt-get update -qq
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang-16 llvm-16-dev libllvm16
+    - apt-get install -y -qq wget llvm-16-dev
     - wget -q https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb -O /tmp/mull.deb
     - dpkg -i /tmp/mull.deb 2>/dev/null || apt-get install -y -f -qq
   script:
-    - export CC=clang-16
-    - export CXX=clang++-16
+    - export CC=clang
+    - export CXX=clang++
     - export KEY="-DSTEALTH_BUILD_KEY=$BUILD_KEY"
     - export INC="-I . -I tests/third_party"
     - $CXX -fembed-bitcode -std=c++20 -O1 $KEY $INC tests/string_test.cpp -o string_test_mull -lpthread
-    - "mull-runner-16 string_test_mull --reporters=stdout --mutators=all --timeout=5000 > mutation_results.txt 2>&1 || true"
+    - "mull-runner string_test_mull --reporters=stdout --mutators=all --timeout=5000 > mutation_results.txt 2>&1 || true"
     - cat mutation_results.txt
     - "grep -iE 'mutation score|killed|survived|total' mutation_results.txt || echo Mull completed check results above"
   artifacts:

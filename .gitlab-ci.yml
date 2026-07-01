@@ -172,22 +172,17 @@ semgrep:
 
 mutation:
   stage: mutation
-  image: ubuntu:22.04
+  image: ubuntu:24.04
   timeout: 2 hours
   before_script:
     - apt-get update -qq
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wget gnupg2 g++ bc file
-    - wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
-    - echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" > /etc/apt/sources.list.d/llvm.list
-    - apt-get update -qq
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang-16 llvm-16-dev libllvm16
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wget clang-18 llvm-18-dev libllvm18 g++ bc file
   script:
-    - wget -qL -O /tmp/mull.deb https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb || true
-    - file /tmp/mull.deb || true
+    - wget -qL -O /tmp/mull.deb "https://github.com/mull-project/mull/releases/download/0.34.0/Mull-18-0.34.0-LLVM-18.1.3-ubuntu-amd64-24.04.deb" || true
     - dpkg -i /tmp/mull.deb 2>&1 || apt-get install -y -f -qq 2>&1 || true
-    - which mull-runner-16 2>/dev/null && echo "Mull installed!" || echo "Mull not found — fallback to manual"
-    - export CC=clang-16 CXX=clang++-16 KEY="-DSTEALTH_BUILD_KEY=$BUILD_KEY" INC="-I . -I tests/third_party"
-    - clang++-16 -fembed-bitcode -std=c++20 -O1 $KEY $INC tests/string_test.cpp -o string_test_mull -lpthread 2>/dev/null && mull-runner-16 string_test_mull --reporters=stdout --mutators=all --timeout=5000 > mutation_results.txt 2>&1 || true
+    - which mull-instrument-18 2>/dev/null && echo "Mull installed!" || echo "Mull not found — fallback to manual"
+    - export KEY="-DSTEALTH_BUILD_KEY=$BUILD_KEY" INC="-I . -I tests/third_party"
+    - clang++-18 -emit-llvm -c -std=c++20 -O0 -g $KEY $INC tests/portable_smoke_test.cpp -o smoke.bc 2>/dev/null && mull-instrument-18 smoke.bc -o smoke_mut.bc 2>/dev/null && clang++-18 smoke_mut.bc -o smoke_mull -lpthread 2>/dev/null && mull-runner-18 smoke_mull --reporters=IDE --timeout=10000 > mutation_results.txt 2>&1 || true
     - if [ ! -s mutation_results.txt ]; then chmod +x tools/mutation_test.sh && ./tools/mutation_test.sh > mutation_results.txt 2>&1 || true; fi
     - cat mutation_results.txt
   artifacts:

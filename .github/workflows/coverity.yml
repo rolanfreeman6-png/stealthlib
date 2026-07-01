@@ -29,7 +29,7 @@ jobs:
           echo "COV_BIN=$(pwd)/$COV_DIR/bin" >> $GITHUB_ENV
       - name: Build with cov-build
         run: |
-          $COV_BIN/cov-build --version
+          $COV_BIN/cov-build --help 2>&1 | head -1
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
             -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON \
             -DSTEALTH_BUILD_FIXTURES=ON \

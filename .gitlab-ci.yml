@@ -179,8 +179,9 @@ mutation:
     - apt-get update -qq
     - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang-16 llvm-16-dev libllvm16
     - wget -q https://github.com/mull-project/mull/releases/download/0.10.0/Mull-0.10.0-LLVM-16-ubuntu-22.04.deb -O /tmp/mull.deb
-    - dpkg -i /tmp/mull.deb 2>/dev/null || apt-get install -y -f -qq
+    - dpkg -i /tmp/mull.deb || apt-get install -y -f -qq || true
   script:
+    - which mull-runner-16 || (echo "mull-runner-16 not found, using manual mutation" && chmod +x tools/mutation_test.sh && ./tools/mutation_test.sh && exit 0)
     - export CC=clang-16
     - export CXX=clang++-16
     - export KEY="-DSTEALTH_BUILD_KEY=$BUILD_KEY"

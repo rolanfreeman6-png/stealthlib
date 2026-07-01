@@ -47,10 +47,4 @@ jobs:
           sonar-scanner \
             -Dsonar.projectKey=rolanfreeman6-png_stealthlib \
             -Dsonar.organization=rolanfreeman6-png \
-            -Dsonar.sources=stealthlib,tests,examples,benchmark \
-            -Dsonar.exclusions=tests/third_party/**,build_*,**/*.obj \
-            -Dsonar.cfamily.compile-commands=build/compile_commands.json \
-            -Dsonar.coverage.exclusions=tests/**,examples/**,benchmark/**,tests/third_party/** \
-            -Dsonar.cfamily.cpp.version=20 \
-            -Dsonar.coverageReportPaths=coverage.xml \
             -Dsonar.host.url=${{ env.SONAR_SERVER_URL }}

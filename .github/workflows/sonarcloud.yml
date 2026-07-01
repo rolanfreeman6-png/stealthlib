@@ -1,0 +1,50 @@
+name: SonarCloud
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  sonarcloud:
+    name: SonarCloud SAST
+    runs-on: ubuntu-latest
+    env:
+      SONAR_SCANNER_VERSION: 5.0.1.3006
+      SONAR_SERVER_URL: "https://sonarcloud.io"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ make python3 ninja-build
+      - name: Generate compile_commands.json
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSTEALTH_BUILD_EXAMPLES=ON \
+            -DSTEALTH_BUILD_TESTS=ON \
+            -DSTEALTH_BUILD_FIXTURES=OFF \
+            -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
+      - name: Install SonarScanner
+        run: |
+          wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${{ env.SONAR_SCANNER_VERSION }}-linux.zip
+          unzip -q sonar-scanner-cli-${{ env.SONAR_SCANNER_VERSION }}-linux.zip -d $HOME
+          echo "$HOME/sonar-scanner-${{ env.SONAR_SCANNER_VERSION }}-linux/bin" >> $GITHUB_PATH
+      - name: Run SonarScanner
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=rolanfreeman6-png_stealthlib \
+            -Dsonar.organization=rolanfreeman6-png \
+            -Dsonar.sources=stealthlib,tests,examples,benchmark \
+            -Dsonar.exclusions=tests/third_party/**,build_*,**/*.obj \
+            -Dsonar.cfamily.compile-commands=build/compile_commands.json \
+            -Dsonar.coverage.exclusions=tests/**,examples/**,benchmark/**,tests/third_party/** \
+            -Dsonar.cfamily.cpp.version=20 \
+            -Dsonar.host.url=${{ env.SONAR_SERVER_URL }}

@@ -14,6 +14,8 @@
 [![Coverage](https://img.shields.io/badge/coverage-94.6%25-brightgreen)](#verification-matrix)
 [![Mutation](https://img.shields.io/badge/mutation-100%25-brightgreen)](#mutation-testing)
 [![CodeQL](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml/badge.svg)](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml)
+[![SonarCloud](https://sonarcloud.io/api/project_badges/measure?key=rolanfreeman6-png_stealthlib&metric=alert_status)](https://sonarcloud.io/dashboard?id=rolanfreeman6-png_stealthlib)
+[![PVS-Studio](https://img.shields.io/badge/PVS--Studio-0%20findings-brightgreen)](#pvs-studio)
 [![Semgrep](https://img.shields.io/badge/SAST-Semgrep-blue)](https://gitlab.com/rolanfreeman6/stealthlib/-/pipelines)
 
 **9.5 / 10 — luxury-class, verified on 5 platforms**
@@ -237,9 +239,13 @@ stealthlib/
 
 | Tool | Configuration | Result |
 |------|--------------|--------|
+| **PVS-Studio 7.02** | Full analysis, 27 source files, all analyzers enabled | ✓ **0 findings** — clean |
 | clang-tidy-18 | `.clang-tidy` config, 116,507 checks suppressed | 974 shown, 2 real `bugprone` findings (out-of-scope) |
 | cppcheck | `--enable=all --inline-suppr` | 0 errors, 0 performance, 0 real warnings |
 | MSVC `/analyze` | SAL annotations | 0 unsuppressed in our code (1 in SDK `winreg.h`) |
+| **SonarCloud** | `security-extended` + `security-and-quality` | See [SonarCloud dashboard](https://sonarcloud.io/dashboard?id=rolanfreeman6-png_stealthlib) |
+| **CodeQL** | `security-extended` + `security-and-quality` | ✓ CI green |
+| **Semgrep** | `p/c++` + `p/security-audit` rulesets | ✓ CI green |
 
 ### Sanitizers
 

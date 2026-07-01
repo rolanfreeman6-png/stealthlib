@@ -129,10 +129,10 @@ jobs:
           fi
           which mull-instrument-18 2>/dev/null && echo "Mull installed!" || echo "Mull not found — fallback to manual"
           export KEY="-DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL" INC="-I . -I tests/third_party"
-          clang++-18 -emit-llvm -c -std=c++20 -O0 -g $KEY $INC tests/portable_smoke_test.cpp -o smoke.bc 2>/dev/null
-          mull-instrument-18 smoke.bc -o smoke_mut.bc 2>/dev/null
-          clang++-18 smoke_mut.bc -o smoke_mull -lpthread 2>/dev/null
-          mull-runner-18 smoke_mull --reporters=IDE --timeout=10000 > mutation_results.txt 2>&1 || true
+          clang++-18 -emit-llvm -c -std=c++20 -O0 -g $KEY $INC tests/string_test.cpp -o string_test.bc 2>/dev/null
+          mull-instrument-18 string_test.bc -o string_test_mut.bc 2>/dev/null
+          clang++-18 string_test_mut.bc -o string_test_mull -lpthread 2>/dev/null
+          mull-runner-18 string_test_mull --reporters=IDE --include-not-covered --timeout=30000 > mutation_results.txt 2>&1 || true
           if [ ! -s mutation_results.txt ]; then
             chmod +x tools/mutation_test.sh
             bash tools/mutation_test.sh > mutation_results.txt 2>&1 || true

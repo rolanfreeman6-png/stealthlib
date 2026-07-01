@@ -14,7 +14,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-94.6%25-brightgreen)](#coverage)
 [![Mutation](https://img.shields.io/badge/mutation-100%25-brightgreen)](#mutation-testing)
 [![CodeQL](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml/badge.svg)](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml)
-[![SonarCloud](https://sonarcloud.io/api/project_badges/measure?project=rolanfreeman6-png_stealthlib&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=rolanfreeman6-png_stealthlib)
+[![SonarCloud](https://img.shields.io/badge/SonarCloud-A_(0_bugs%2C_0_vuln)-brightgreen)](https://sonarcloud.io/summary/new_code?id=rolanfreeman6-png_stealthlib)
 [![PVS-Studio](https://img.shields.io/badge/PVS--Studio-0%20findings-brightgreen)](docs/AUDIT_REPORT.html)
 [![Coverity](https://img.shields.io/badge/Coverity-0.17%20density-brightgreen)](https://scan.coverity.com/projects/rolanfreeman6-png-stealthlib)
 

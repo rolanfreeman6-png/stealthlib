@@ -34,7 +34,10 @@ jobs:
             -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON \
             -DSTEALTH_BUILD_FIXTURES=ON \
             -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
-          $COV_BIN/cov-build --dir cov-int cmake --build build --parallel 4
+          $COV_BIN/cov-build --dir cov-int \
+            --exclude /usr/include \
+            --exclude tests/third_party \
+            cmake --build build --parallel 4
       - name: Submit to Coverity Scan
         run: |
           tar czvf stealthlib.tgz cov-int

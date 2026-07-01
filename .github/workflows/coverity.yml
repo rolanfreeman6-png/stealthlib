@@ -1,0 +1,41 @@
+name: Coverity Scan
+
+on:
+  push:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  coverity:
+    name: Coverity Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ make python3 wget curl
+      - name: Download Coverity Build Tool
+        run: |
+          wget -q https://scan.coverity.com/download/cxx/linux64 \
+            --post-data "token=${{ secrets.COVERITY_TOKEN }}&project=rolanfreeman6-png%2Fstealthlib" \
+            -O cov-analysis-linux64.tar.gz
+          tar xzf cov-analysis-linux64.tar.gz
+      - name: Build with cov-build
+        run: |
+          export PATH=$(pwd)/cov-analysis-linux64/bin:$PATH
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON \
+            -DSTEALTH_BUILD_FIXTURES=ON \
+            -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
+          cov-build --dir cov-int cmake --build build --parallel 4
+      - name: Submit to Coverity Scan
+        run: |
+          tar czvf stealthlib.tgz cov-int
+          curl --form token=${{ secrets.COVERITY_TOKEN }} \
+               --form email=rolanfreeman6@users.noreply.github.com \
+               --form file=@stealthlib.tgz \
+               --form version="v2.2.0" \
+               --form description="StealthLib v2.2.0 Coverity Scan" \
+               https://scan.coverity.com/builds?project=rolanfreeman6-png%2Fstealthlib

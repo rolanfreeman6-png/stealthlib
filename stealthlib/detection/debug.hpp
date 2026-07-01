@@ -108,9 +108,10 @@ inline uint64_t rdtsc() noexcept {
 inline bool check_timing_anomaly() noexcept {
 #if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86)
     uint64_t a = rdtsc();
-    volatile uint64_t acc = 0;
+    uint64_t acc = 0;
     for (uint64_t i = 0; i < 1024; ++i) acc += i * 0xA5A5A5A5ULL;
-    (void)acc;
+    volatile uint64_t sink = acc;
+    (void)sink;
     uint64_t b = rdtsc();
     uint64_t delta = b - a;
     return delta < 64 || delta > 100000000ULL;

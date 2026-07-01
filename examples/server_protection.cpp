@@ -9,19 +9,21 @@ int main() {
 
     std::cout << "[*] Protecting server configuration...\n\n";
 
-    auto db_connection = S("Server=db.prod.internal;Database=users;User=admin;Password=P@ssw0rd123!");
+    // Example placeholder values — NOT real credentials.
+    // StealthLib encrypts these at compile time so they never appear in .rodata.
+    auto db_connection = S("Server=EXAMPLE.local;Database=example_db;User=example_user;Password=EXAMPLE_PLACEHOLDER_NOT_REAL");
     std::cout << "[*] DB Connection String: " << db_connection << "\n";
 
-    auto redis_password = S("redis_prod_password_xyz789");
+    auto redis_password = S("example_placeholder_redis_token");
     std::cout << "[*] Redis Password: " << redis_password << "\n";
 
-    auto jwt_secret = S("JWT_SECRET_KEY_SUPER_SECURE_123456789");
+    auto jwt_secret = S("EXAMPLE_JWT_SECRET_PLACEHOLDER_123456789");
     std::cout << "[*] JWT Secret: " << jwt_secret << "\n";
 
-    auto aws_access_key = S("AKIAIOSFODNN7EXAMPLE");
+    auto aws_access_key = S("AKIAEXAMPLEPLACEHOLDER");
     std::cout << "[*] AWS Access Key: " << aws_access_key << "\n";
 
-    auto aws_secret_key = S("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+    auto aws_secret_key = S("EXAMPLE_PLACEHOLDER_SECRET_KEY_NOT_REAL");
     std::cout << "[*] AWS Secret Key: " << aws_secret_key << "\n";
 
     auto internal_api_endpoint = S("https://internal-api.company.local/v2/");

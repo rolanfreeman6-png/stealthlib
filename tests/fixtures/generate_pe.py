@@ -22,6 +22,16 @@ import struct
 import sys
 
 
+def _validate_output_path(path: str) -> str:
+    """Validate that path is within the current working directory tree
+    to prevent path traversal when called from CI or CLI."""
+    abs_path = os.path.abspath(path)
+    cwd = os.path.abspath(os.getcwd())
+    if not abs_path.startswith(cwd + os.sep) and abs_path != cwd:
+        raise ValueError(f"Output path '{path}' is outside working directory")
+    return abs_path
+
+
 MZ_MAGIC = b"MZ"
 PE_MAGIC = b"PE\0\0"
 
@@ -147,7 +157,7 @@ def tiny_null_dll(path: str) -> None:
     if len(out) < size_of_headers + rdata_raw_size:
         out += b"\x00" * (size_of_headers + rdata_raw_size - len(out))
 
-    with open(path, "wb") as f:
+    with open(_validate_output_path(path), "wb") as f:
         f.write(out)
 
 
@@ -262,7 +272,7 @@ def is_forwarder_dll(path: str) -> None:
     if len(out) < size_of_headers + rdata_raw:
         out += b"\x00" * (size_of_headers + rdata_raw - len(out))
 
-    with open(path, "wb") as f:
+    with open(_validate_output_path(path), "wb") as f:
         f.write(out)
 
 
@@ -271,7 +281,7 @@ def corrupt_header(path: str) -> None:
     buf = bytearray(0x40)
     buf[0:2] = MZ_MAGIC
     buf[0x3C:0x40] = struct.pack("<I", 0xFFFFFFFF)  # invalid e_lfanew
-    with open(path, "wb") as f:
+    with open(_validate_output_path(path), "wb") as f:
         f.write(buf)
 
 

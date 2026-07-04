@@ -360,10 +360,7 @@ See [`docs/THREADING.md`](docs/THREADING.md) for the full happens-before analysi
 | [docs/AUDIT_REPORT.html](docs/AUDIT_REPORT.html) | **Independent audit dashboard** — PVS-Studio 0 findings + SonarCloud A ratings + CodeQL + Coverity 0.17 density + all sanitizers + fuzz + mutation |
 | [docs/THREADING.md](docs/THREADING.md) | Variant B contract, happens-before relations, safe/unsafe operations table, reference test |
 | [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | What is protected, what is NOT, trust boundaries, recommended composition |
-| [docs/ANALYSIS.md](docs/ANALYSIS.md) | Technical analysis of the library's design and capabilities |
-| [docs/EXAMPLES.md](docs/EXAMPLES.md) | Annotated example outputs |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation guide |
-| [docs/HARDENING_REPORT.md](docs/HARDENING_REPORT.md) | Hardening measures applied |
 | [docs/SECURITY.md](docs/SECURITY.md) | Security policy |
 | [AUDIT_v2.1.3_RESPONSE.md](AUDIT_v2.1.3_RESPONSE.md) | 22 audit findings, all FIXED with commit SHAs |
 

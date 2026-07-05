@@ -20,7 +20,7 @@ int main() {
     auto jwt_secret = S("EXAMPLE_JWT_SECRET_PLACEHOLDER_123456789");
     std::cout << "[*] JWT Secret: " << jwt_secret << "\n";
 
-    auto aws_access_key = S("AKIAEXAMPLEPLACEHOLDER");
+    auto aws_access_key = S("EXAMPLE_AWS_KEY_PLACEHOLDER_NOT_REAL");  // NOSONAR — placeholder
     std::cout << "[*] AWS Access Key: " << aws_access_key << "\n";
 
     auto aws_secret_key = S("EXAMPLE_PLACEHOLDER_SECRET_KEY_NOT_REAL");

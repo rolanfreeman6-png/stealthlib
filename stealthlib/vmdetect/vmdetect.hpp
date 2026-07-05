@@ -66,6 +66,7 @@ inline bool registry_or_dmi_vm_vendor() noexcept {
     return hit;
 #else
     auto read_first_line = [](char const* path, char* out, std::size_t cap) -> bool {
+        if (!path || path[0] != '/' || std::strstr(path, "..") != nullptr) return false;
         std::FILE* f = std::fopen(path, "r");
         if (!f) return false;
         if (!std::fgets(out, static_cast<int>(cap), f)) { std::fclose(f); return false; }

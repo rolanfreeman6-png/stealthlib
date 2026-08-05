@@ -6,10 +6,10 @@ Outputs (in the supplied build directory):
 - tiny_null.dll       : minimal PE64 DLL with NO exports, export directory empty
                        (NumberOfFunctions=0, NumberOfNames=0). Exercises
                        get_proc() returning nullptr on empty export dir.
-- is_forwarder.dll    : minimal PE64 DLL with one FORWARDED export ("B" -> "kernel32.GetProcAddress")
+- is_forwarder.dll    : minimal PE64 DLL with one FORWARDED export ("A" -> "kernel32.GetProcAddress")
                        Exercises export directory parsing and forwarder detection.
 - corrupt_header.bin  : bytes that begin with "MZ" but e_lfanew points OFF the file.
-                       Exercises fali-closed nullpointer return from get_nt().
+                       Exercises fail-closed nullptr return from get_nt().
 
 These are NOT loader-runnable binaries (they lack .text execution and the
 correct ImageBase config); they exist solely as deterministic inputs for the

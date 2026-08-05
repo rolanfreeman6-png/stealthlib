@@ -7,7 +7,7 @@ int main() {
     std::cout << "[+] StealthLib Server Protection Example\n";
     std::cout << "[*] Version: " << stealth::version() << "\n\n";
 
-    std::cout << "[*] Protecting server configuration...\n\n";
+    std::cout << "[*] Demonstrating server configuration literals...\n\n";
 
     // Example placeholder values — NOT real credentials. // NOSONAR
     // StealthLib transforms these at compile time; verify emitted binaries per target.
@@ -15,25 +15,25 @@ int main() {
     std::cout << "[*] DB Connection String: " << db_connection << "\n";
 
     auto redis_password = S("example_placeholder_redis_token");
-    std::cout << "[*] Redis Password: " << redis_password << "\n";
+    std::cout << "[*] Redis placeholder: " << redis_password << "\n";
 
     auto jwt_secret = S("EXAMPLE_JWT_SECRET_PLACEHOLDER_123456789");
-    std::cout << "[*] JWT Secret: " << jwt_secret << "\n";
+    std::cout << "[*] JWT placeholder: " << jwt_secret << "\n";
 
     auto aws_access_key = S("EXAMPLE_AWS_KEY_PLACEHOLDER_NOT_REAL");  // NOSONAR — placeholder
     std::cout << "[*] AWS Access Key: " << aws_access_key << "\n";
 
     auto aws_secret_key = S("EXAMPLE_PLACEHOLDER_SECRET_KEY_NOT_REAL");
-    std::cout << "[*] AWS Secret Key: " << aws_secret_key << "\n";
+    std::cout << "[*] AWS secret placeholder: " << aws_secret_key << "\n";
 
     auto internal_api_endpoint = S("https://internal-api.company.local/v2/");
     std::cout << "[*] Internal API Endpoint: " << internal_api_endpoint << "\n";
 
-    auto encryption_key = S("ENCRYPT_KEY_AES256_PROD_2024");
+    auto encryption_key = S("EXAMPLE_ENCRYPTION_KEY_PLACEHOLDER");
     std::cout << "[*] Encryption Key: " << encryption_key << "\n";
 
-    auto smtp_password = S("smtp_server_password_2024!");
-    std::cout << "[*] SMTP Password: " << smtp_password << "\n";
+    auto smtp_password = S("example_smtp_password_placeholder");
+    std::cout << "[*] SMTP placeholder: " << smtp_password << "\n";
 
     std::cout << "\n[*] Encoding sensitive data...\n";
     auto encoded_db = stealth::encoding::base64_encode("db_connection_string_encoded");
@@ -42,7 +42,7 @@ int main() {
     auto encoded_key = stealth::encoding::hex_encode(encryption_key, std::strlen(encryption_key));
     std::cout << "[*] Hex Encoded Key: " << encoded_key << "\n";
 
-    std::cout << "\n[*] Testing dynamic API resolution (no IAT)...\n";
+    std::cout << "\n[*] Testing dynamic API resolution for selected APIs...\n";
 
     using VirtualAlloc_t = LPVOID(*)(LPVOID, SIZE_T, DWORD, DWORD);
     auto VirtualAlloc = stealth::get_function<VirtualAlloc_t>("kernel32.dll", "VirtualAlloc");
@@ -72,8 +72,8 @@ int main() {
         std::cout << "[+] RegOpenKeyExW resolved dynamically\n";
     }
 
-    std::cout << "\n[+] Server sensitive data protected!\n";
-    std::cout << "[+] All APIs resolved without IAT entries!\n";
+    std::cout << "\n[+] Demonstration placeholders processed.\n";
+    std::cout << "[+] Selected APIs resolved through StealthLib helpers.\n";
     std::cout << "[+] Example completed successfully.\n";
 
     return 0;

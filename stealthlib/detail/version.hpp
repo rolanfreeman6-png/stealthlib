@@ -6,8 +6,8 @@
 
 #define STEALTH_VERSION_MAJOR 2
 #define STEALTH_VERSION_MINOR 2
-#define STEALTH_VERSION_PATCH 1
-#define STEALTH_VERSION_STRING "2.2.1"
+#define STEALTH_VERSION_PATCH 2
+#define STEALTH_VERSION_STRING "2.2.2"
 
 #ifndef STEALTH_BUILD_KEY
 #error "STEALTH_BUILD_KEY is not defined. Build via CMake (it auto-generates from git SHA + timestamp)."

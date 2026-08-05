@@ -12,27 +12,27 @@ void print_separator(const char* title) {
 
 void demonstrate_string_encryption() {
     print_separator("COMPILE-TIME STRING ENCRYPTION");
-    auto sensitive_api_key = S("sk-live-abc123def456ghi789jkl012");
+    auto sensitive_api_key = S("EXAMPLE_API_KEY_PLACEHOLDER_NOT_REAL");
     std::cout << "[+] Encrypted API Key: " << sensitive_api_key << "\n";
     std::cout << "[*] String length: " << sensitive_api_key.size() << "\n";
-    auto connection_string = S("Server=prod.db.local;Password=Secret123!");
+    auto connection_string = S("Server=example.db.local;Password=EXAMPLE_PLACEHOLDER");
     std::cout << "[+] Connection String: " << connection_string << "\n";
-    auto jwt_secret = S("JWT_SECRET_SUPER_LONG_KEY_FOR_PRODUCTION_ENVIRONMENT");
+    auto jwt_secret = S("EXAMPLE_JWT_SECRET_PLACEHOLDER_NOT_REAL");
     std::cout << "[+] JWT Secret: " << jwt_secret << "\n";
     auto license_key = S("LICENSE-KEY-A1B2-C3D4-E5F6-G7H8");
     std::cout << "[+] License Key: " << license_key << "\n";
-    auto admin_password = S("AdminP@ssw0rd!2024");
+    auto admin_password = S("EXAMPLE_ADMIN_PASSWORD_PLACEHOLDER");
     std::cout << "[+] Admin Password: " << admin_password << "\n";
     std::cout << "\n[*] Wide string encryption:\n";
     auto wide_title = SW(L"StealthLib Wide String Test");
-    auto wide_msg = SW(L"All sensitive strings are encrypted at compile-time!");
+    auto wide_msg = SW(L"Selected literals are transformed at compile time.");
     std::wcout << L"[+] Wide Title: " << wide_title << L"\n";
     (void)wide_msg;
 }
 
 void demonstrate_peb_resolution() {
     print_separator("PEB WALKING & DYNAMIC API RESOLUTION");
-    std::cout << "[*] Resolving APIs without IAT entries...\n\n";
+    std::cout << "[*] Resolving selected APIs from loaded modules...\n\n";
     using MessageBoxW_t = int(*)(HWND, LPCWSTR, LPCWSTR, UINT);
     auto MessageBoxW = stealth::get_function<MessageBoxW_t>("user32.dll", "MessageBoxW");
     if (MessageBoxW) std::cout << "[+] MessageBoxW resolved: " << reinterpret_cast<void*>(MessageBoxW) << "\n";
@@ -127,7 +127,7 @@ void demonstrate_stealth_api() {
     if (MessageBoxW_fn.is_valid()) {
         std::cout << "[+] stealth_api resolved MessageBoxW\n";
         auto title = SW(L"StealthLib Demo");
-        auto msg = SW(L"STEALTH_API works perfectly!\nAll functions resolved dynamically.");
+        auto msg = SW(L"STEALTH_API resolved selected functions dynamically.");
         MessageBoxW_fn.get()(nullptr, msg, title, MB_OK | MB_ICONINFORMATION);
     }
     auto GetTickCount64_fn = stealth::stealth_api<ULONGLONG()>("kernel32.dll", "GetTickCount64");
@@ -167,7 +167,7 @@ void demonstrate_module_loader() {
 
 int main() {
     std::cout << "[*] StealthLib Full Demo - " << stealth::version() << "\n";
-    std::cout << "[*] Binary obfuscation library for C++20\n";
+    std::cout << "[*] Header-only C++20 hardening utility demo\n";
     demonstrate_string_encryption();
     demonstrate_peb_resolution();
     demonstrate_encoding();

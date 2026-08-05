@@ -47,7 +47,7 @@ void benchmark_string_encryption() {
         volatile auto lock = s.unlock();
         (void)lock;
     }, 1000);
-    std::cout << "[+] named S object unlock() 100x (scoped): " << unlock_time << " ms/call\n";
+    std::cout << "[+] named S object unlock() 1000x (scoped): " << unlock_time << " ms/call\n";
 }
 
 void benchmark_base64() {

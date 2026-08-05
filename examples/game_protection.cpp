@@ -6,29 +6,29 @@ int main() {
     std::cout << "[+] StealthLib Game Protection Example\n";
     std::cout << "[*] Version: " << stealth::version() << "\n\n";
 
-    auto api_key = S("sk-prod-a1b2c3d4e5f6g7h8i9j0");
-    std::cout << "[*] Protected API Key: " << api_key << "\n";
+    auto api_key = S("EXAMPLE_API_KEY_PLACEHOLDER_NOT_REAL");
+    std::cout << "[*] API key placeholder: " << api_key << "\n";
 
-    auto game_server_ip = S("192.168.1.100:27015");
+    auto game_server_ip = S("203.0.113.10:27015");
     std::cout << "[*] Game Server IP: " << game_server_ip << "\n";
 
-    auto database_password = S("P@ssw0rd!GameDB#2024");
-    std::cout << "[*] Database Password: " << database_password << "\n";
+    auto database_password = S("EXAMPLE_DATABASE_PASSWORD_PLACEHOLDER");
+    std::cout << "[*] Database password placeholder: " << database_password << "\n";
 
-    auto mod_api_secret = S("MOD_SECRET_KEY_ABC123");
-    std::cout << "[*] Mod API Secret: " << mod_api_secret << "\n";
+    auto mod_api_secret = S("EXAMPLE_MOD_SECRET_PLACEHOLDER");
+    std::cout << "[*] Mod API secret placeholder: " << mod_api_secret << "\n";
 
     auto telemetry_endpoint = S("https://telemetry.game-server.net/api/v2");
     std::cout << "[*] Telemetry Endpoint: " << telemetry_endpoint << "\n";
 
-    auto encrypted_auth = stealth::encoding::base64_encode("player_auth_token_xyz789");
+    auto encrypted_auth = stealth::encoding::base64_encode("example_player_auth_token");
     std::cout << "[*] Base64 Auth Token: " << encrypted_auth << "\n";
 
     using MessageBoxW_t = int(*)(HWND, LPCWSTR, LPCWSTR, UINT);
     auto MessageBoxW = stealth::get_function<MessageBoxW_t>("user32.dll", "MessageBoxW");
     if (MessageBoxW) {
-        auto title = SW(L"StealthLib Protected");
-        auto msg = SW(L"Game sensitive data is protected!\nCheck the console for details.");
+        auto title = SW(L"StealthLib Demo");
+        auto msg = SW(L"Selected demo literals were transformed.\nCheck the console for details.");
         MessageBoxW(nullptr, msg, title, MB_OK | MB_ICONINFORMATION);
     }
 
@@ -51,7 +51,7 @@ int main() {
         std::cout << "[*] System Uptime: " << GetTickCount64() << " ms\n";
     }
 
-    std::cout << "\n[+] All sensitive strings and APIs resolved without IAT!\n";
+    std::cout << "\n[+] Demonstration literals and selected API resolution completed.\n";
     std::cout << "[+] Example completed successfully.\n";
 
     return 0;

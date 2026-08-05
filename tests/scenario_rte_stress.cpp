@@ -1,8 +1,8 @@
 // tests/scenario_rte_stress.cpp
 // ---------------------------------------------------------------------
 // RTE Scenario 3 -- "real-world stress". A long-running binary with a
-// lexicon of encrypted literals across many sizes (1B to ~64B), some
-// wide, some narrow, some ASCII, some with embedded NUL-like bytes.
+// lexicon of encrypted literals across many sizes (1B to ~100B), with
+// wide and narrow printable strings.
 // Verifies that under heavy decrypt+re-encrypt churn, no literal
 // mis-decrypts, no buffer alias, no use-after-free.
 // ---------------------------------------------------------------------
@@ -31,7 +31,7 @@ struct Lit {
 } // namespace
 
 int main() {
-    // Build a representative lexicon. Mix lengths, mix ASCII / binary.
+    // Build a representative lexicon. Mix lengths and character widths.
     auto s0  = S("");
     auto s1  = S("a");
     auto s2  = S("ab");

@@ -11,7 +11,7 @@
 
 extern "C" const char* stealthlib_sse2_scalar_reference();
 
-// 64-byte literal -- above the SSE2 threshold (N >= 32).
+// 77-byte literal -- above the SSE2 threshold (N >= 32).
 // Includes printable ASCII, punctuation, digits, a few hex bytes that
 // exercise the per-position derive_byte() byte spans.
 int main() {
@@ -54,8 +54,7 @@ int main() {
         return 1;
     }
 
-    // Also exercise a 16-byte literal (N < 32, scalar-only path) and
-    // a 33-byte literal (just past SSE2 threshold).
+    // Also exercise a below-threshold literal and an above-threshold literal.
     auto li_short = S("STEALTHLIB_16_BYTE"); // 17 bytes
     auto li_edge  = S("STEALTHLIB_33_BYTE_LITERAL_AAAAAAAAAAAAAAAAAAA"); // 41 bytes
     if (std::strcmp(li_short.c_str(), "STEALTHLIB_16_BYTE") != 0 ||

@@ -1,4 +1,4 @@
-# Installation Guide — v2.2.1
+# Installation Guide - v2.2.2
 
 ## Requirements
 

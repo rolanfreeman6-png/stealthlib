@@ -1,4 +1,4 @@
-// StealthLib v2.2.1 example: HASH-BASED API RESOLUTION
+// StealthLib v2.2.2 example: HASH-BASED API RESOLUTION
 // ---------------------------------------------------------
 // What you SEE in the source: hashes of API/module names.
 // This demo prints diagnostic names, so it is not a no-strings sample.
@@ -75,7 +75,7 @@ int main() {
         auto wlock = wlit.unlock();
         std::wcout << L"    scope 1: wide = " << wlock.c_str() << L"\n";
     }
-    std::cout << "    scope exit: re-encrypted (string not visible in this dump)\n";
+    std::cout << "    scope exit: guard wiped plaintext storage and re-encrypted the object\n";
 #else
     std::cout << "[*] Platform: non-Windows. Hash-based resolver APIs are unavailable here.\n";
     constexpr uint64_t h = stealth::hashes::fnv("user32.dll");

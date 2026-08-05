@@ -3,7 +3,7 @@
 // Deterministic concurrency test for StealthLib string encryption.
 //
 // Verifies that:
-// 1. Per-thread instances produce IDENTICAL results across 1000 runs
+// 1. Per-thread instances produce IDENTICAL results across RUNS iterations
 // 2. Fixed start-gun barrier ensures tight interleaving
 // 3. No data race on per-thread instances (TSan clean)
 // 4. Results are byte-identical across runs (deterministic)

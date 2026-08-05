@@ -2,7 +2,7 @@
 #ifndef STEALTH_HPP
 #define STEALTH_HPP
 
-// StealthLib v2.2.1 — header-only C++20 Windows hardening library
+// StealthLib v2.2.2 - header-only C++20 Windows hardening library
 // Single-include umbrella: users only #include "stealthlib/stealth.hpp"
 // Internal implementation is split into sub-files for maintainability.
 

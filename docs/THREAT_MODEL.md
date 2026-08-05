@@ -1,4 +1,4 @@
-# StealthLib Threat Model — v2.2.1
+# StealthLib Threat Model - v2.2.2
 
 ## Intended use
 

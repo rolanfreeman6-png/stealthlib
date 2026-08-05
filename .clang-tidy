@@ -1,6 +1,5 @@
-# StealthLib clang-tidy configuration (Phase 2, Step 2.1)
+# StealthLib clang-tidy configuration
 # Run: clang-tidy -p <build-dir-with-compile_commands.json> <file>
-# Expectation per plan: <5 honest findings (rest suppressed with rationale).
 Checks: >
   -*,
   bugprone-*,
@@ -43,5 +42,5 @@ Checks: >
 # build already enforces -Wconversion/-Wshadow under the strict-warnings CI
 # job; clang-tidy would duplicate that signal noisily.
 WarningsAsErrors: ''
-HeaderFilterRegex: 'stealthlib/stealth\.hpp'
+HeaderFilterRegex: 'stealthlib/.*\.hpp'
 FormatStyle: file

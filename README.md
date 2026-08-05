@@ -11,7 +11,7 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-orange)](https://en.cppreference.com/w/cpp/20)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**StealthLib v2.2.1** — practical obfuscation + Windows inspection helpers with explicit limits and regression tests.
+**StealthLib v2.2.2** — practical obfuscation + Windows inspection helpers with explicit limits and regression tests.
 
 </div>
 
@@ -69,7 +69,7 @@ auto guard = token.unlock();
 This is rejected at compile time:
 
 ```cpp
-auto guard = S("secret").unlock();
+// Rejected: calling unlock() directly on an S("secret") temporary.
 ```
 
 ---
@@ -97,7 +97,7 @@ include(FetchContent)
 FetchContent_Declare(
     stealthlib
     GIT_REPOSITORY https://github.com/rolanfreeman6-png/stealthlib.git
-    GIT_TAG v2.2.1
+    GIT_TAG v2.2.2
 )
 FetchContent_MakeAvailable(stealthlib)
 target_link_libraries(your_target PRIVATE stealthlib)
@@ -124,6 +124,36 @@ Copy the **entire** `stealthlib/` directory into your include path. Copying only
 | 🔒 SHA-256 | `detail::sha256_oneshot` | Inline SHA-256 implementation with KAT tests. |
 | 🧰 Encoding | Base64, hex, XOR, ROT13 | Portable helpers; decoders reject malformed input. |
 | 🧼 Memory | `secure_zero`, `compare_constant_time` | Volatile zeroing and constant-time byte comparison. |
+
+---
+
+## 📜 Public API Contract
+
+| Stable public surface | Notes |
+| --- | --- |
+| `S`, `SW` | Literal objects and lvalue-only `unlock()` guards. |
+| `stealth::version`, `stealth::build_key` | Version/build metadata. |
+| `stealth::hashes::*` | FNV-1a and DJB2 helpers. |
+| `stealth::encoding::*` | Base64, hex, XOR, and ROT13 helpers. |
+| `stealth::memory::*` | Secure zero and constant-time comparison. |
+| `stealth::get_proc`, `get_function`, `get_function_by_hash` | Windows loaded-module export helpers. |
+| `stealth::integrity::*` | Selected import/export integrity checks. |
+| `stealth::detection::*`, `vmdetect::*` | Best-effort signals and environment hints. |
+
+`stealth::detail::*` is internal and has no compatibility guarantee.
+
+---
+
+## 🧭 Support Matrix
+
+| Surface | Windows | Linux | macOS |
+| --- | --- | --- | --- |
+| `S` / `SW` | yes | yes | yes |
+| hashes / encoding / memory | yes | yes | yes |
+| Windows PE resolver | yes | no | no |
+| IAT / integrity checks | yes | no | no |
+| debug signals | partial | partial | partial |
+| VM hints | yes | yes | limited |
 
 ---
 
@@ -183,7 +213,7 @@ Use `status`, not only `hooked == false`.
 
 ## 🧪 Verification
 
-Current local Windows verification for v2.2.1:
+Current local Windows verification for v2.2.2:
 
 | Check | Result |
 | --- | --- |
@@ -203,7 +233,7 @@ GitHub workflows:
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
 | ✅ CI | push, PR, daily, manual | Windows/MSVC, Linux/GCC, macOS/Clang build + tests. |
-| 🧪 Heavy CI | push, daily, manual | Sanitizers, strict warnings, clang-tidy, cppcheck, coverage, fuzz. |
+| 🧪 Heavy CI | weekly, manual | Sanitizers, strict warnings, clang-tidy, cppcheck, coverage, fuzz. |
 | 🔎 CodeQL | push, PR, weekly, manual | GitHub CodeQL SAST. |
 | 🚢 Release | tag `v*` | Build + CTest, then publish GitHub Release. |
 
@@ -292,9 +322,11 @@ benchmark/
 
 | Version | Release |
 | --- | --- |
-| `2.2.1` | https://github.com/rolanfreeman6-png/stealthlib/releases/tag/v2.2.1 |
+| `2.2.2` | https://github.com/rolanfreeman6-png/stealthlib/releases/tag/v2.2.2 |
 
-Release asset `stealthlib-v2.2.1.zip` is a clean library package: `stealthlib/`, `cmake/`, `CMakeLists.txt`, `README.md`, and `LICENSE` only.
+Release asset `stealthlib-v2.2.2.zip` is a clean library package: `stealthlib/`, `cmake/`, `CMakeLists.txt`, `README.md`, and `LICENSE` only.
+
+GitHub's automatically generated `Source code` archives remain full repository snapshots by design; use the custom `stealthlib-v*.zip` asset for a minimal library-only package.
 
 ---
 
@@ -306,7 +338,7 @@ MIT — see [`LICENSE`](LICENSE).
 
 <div align="center">
 
-**StealthLib v2.2.1**<br>
+**StealthLib v2.2.2**<br>
 Built for practical hardening, explicit contracts, and reproducible tests.
 
 [Report bug](https://github.com/rolanfreeman6-png/stealthlib/issues) · [Releases](https://github.com/rolanfreeman6-png/stealthlib/releases) · [Security](docs/SECURITY.md)

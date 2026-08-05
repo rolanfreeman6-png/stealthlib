@@ -36,6 +36,20 @@ jobs:
           git archive --format=zip --output "artifacts/stealthlib-${env:GITHUB_REF_NAME}.zip" HEAD `
             CMakeLists.txt LICENSE README.md cmake stealthlib
 
+      - name: Verify release package contents
+        shell: pwsh
+        run: |
+          $zip = "artifacts/stealthlib-${env:GITHUB_REF_NAME}.zip"
+          $entries = tar -tf $zip
+          $entries | ForEach-Object { Write-Output $_ }
+          $forbidden = $entries | Where-Object {
+            $_ -match '^(tests/|docs/|examples/|benchmark/|\.github/|tools/|AUDIT_|\.gitlab-ci\.yml|sonar-project\.properties|compile\.bat)'
+          }
+          if ($forbidden) {
+            $forbidden | ForEach-Object { Write-Error "Forbidden release entry: $_" }
+            exit 1
+          }
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

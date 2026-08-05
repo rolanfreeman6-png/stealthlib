@@ -1,4 +1,4 @@
-// StealthLib v2.2.1 example: RAII UNLOCK FOR ENCRYPTED STRINGS
+// StealthLib v2.2.2 example: RAII UNLOCK FOR ENCRYPTED STRINGS
 // ---------------------------------------------------------
 // Demonstrates the named-object `unlock()` RAII pattern:
 //  - When unlock() is called, plaintext exposes via .c_str().
@@ -6,8 +6,7 @@
 //    underlying encrypted buffer is RE-encrypted and plaintext object
 //    storage is wiped.
 //
-// This narrows the window during which a memory-dump analysis
-// can recover sensitive plaintext from your process.
+// This narrows, but does not eliminate, the plaintext lifetime window.
 // The encrypted object must outlive the returned guard.
 
 #include "stealthlib/stealth.hpp"
@@ -16,7 +15,7 @@
 int main() {
     std::cout << "[+] StealthLib unlock demo v" << stealth::version() << "\n";
 
-    auto api = S("sk-live-very-sensitive-token-1234567890");
+    auto api = S("EXAMPLE_TOKEN_PLACEHOLDER_NOT_REAL");
 
     {
         auto lock = api.unlock();

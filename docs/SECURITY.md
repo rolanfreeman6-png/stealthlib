@@ -1,4 +1,4 @@
-# Security Policy — StealthLib v2.2.1
+# Security Policy - StealthLib v2.2.2
 
 ## Scope
 

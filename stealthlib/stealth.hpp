@@ -2,7 +2,7 @@
 #ifndef STEALTH_HPP
 #define STEALTH_HPP
 
-// StealthLib v2.2.0 — header-only C++20 Windows hardening library
+// StealthLib v2.2.1 — header-only C++20 Windows hardening library
 // Single-include umbrella: users only #include "stealthlib/stealth.hpp"
 // Internal implementation is split into sub-files for maintainability.
 
@@ -59,11 +59,12 @@
 #include "integrity/integrity.hpp"
 
 // ── S() / SW() macros ──────────────────────────────────────────────
-// Passes the literal by const-array reference so the compiler can
-// constexpr-fold the encryption and elide the literal in .rodata;
-// only ciphertext remains.
-#define S(str)  ::stealth::stealth_encrypted_char<sizeof(str) - 1, __COUNTER__>{str}
-#define SW(str) ::stealth::stealth_encrypted_wchar<((sizeof(str) - 1) / sizeof(wchar_t)), __COUNTER__>{str}
+// Passes the literal by const-array reference for constant evaluation. Verify
+// produced binaries for each target/compiler if literal elision is required.
+#define S(str) ::stealth::stealth_encrypted_char<sizeof(str) - 1, \
+    ::stealth::detail::source_location_seed(__FILE__, __LINE__, __COUNTER__)>{str}
+#define SW(str) ::stealth::stealth_encrypted_wchar<((sizeof(str) - 1) / sizeof(wchar_t)), \
+    ::stealth::detail::source_location_seed(__FILE__, __LINE__, __COUNTER__)>{str}
 
 #ifndef STEALTH_HASH_AUTO
 #define STEALTH_HASH_AUTO(name) ::stealth::hashes::fnv(name, sizeof(name) - 1)

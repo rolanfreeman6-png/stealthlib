@@ -22,12 +22,11 @@ import struct
 import sys
 
 
-def _validate_output_path(path: str) -> str:
-    """Validate that path is within the current working directory tree
-    to prevent path traversal when called from CI or CLI."""
-    abs_path = os.path.abspath(path)
-    cwd = os.path.abspath(os.getcwd())
-    if not abs_path.startswith(cwd + os.sep) and abs_path != cwd:
+def _validate_output_path(path: str, output_dir: str) -> str:
+    """Return a path only when it remains within the requested output tree."""
+    abs_path = os.path.realpath(path)
+    abs_output_dir = os.path.realpath(output_dir)
+    if os.path.commonpath((abs_path, abs_output_dir)) != abs_output_dir:
         raise ValueError(f"Output path '{path}' is outside working directory")
     return abs_path
 
@@ -40,7 +39,7 @@ def align(offset: int, alignment: int) -> int:
     return ((offset + alignment - 1) // alignment) * alignment
 
 
-def tiny_null_dll(path: str) -> None:
+def tiny_null_dll(path: str, output_dir: str) -> None:
     """Minimal PE64 DLL with empty export directory."""
     file_alignment = 0x200
     section_alignment = 0x200
@@ -140,7 +139,7 @@ def tiny_null_dll(path: str) -> None:
     section_header = b".rdata\x00\x00\x00"  # Name (8)
     section_header += struct.pack("<I", rdata_virt_size)    # VirtualSize
     section_header += struct.pack("<I", export_dir_rva)     # VirtualAddress
-    section_header += struct.pack("<I", rdata_raw_size)     # SizeOfRawData
+    section_header += struct.pack("<I", rdata_raw)          # SizeOfRawData
     section_header += struct.pack("<I", size_of_headers)    # PointerToRawData == VirtualAddress (flat)
     section_header += struct.pack("<IIIII",
         0, 0, 0, 0, 0  # PointerToRelocations ... NumberOfLineNumbers
@@ -154,14 +153,14 @@ def tiny_null_dll(path: str) -> None:
 
     # Section data (.rdata)
     out += rdata_data
-    if len(out) < size_of_headers + rdata_raw_size:
-        out += b"\x00" * (size_of_headers + rdata_raw_size - len(out))
+    if len(out) < size_of_headers + rdata_raw:
+        out += b"\x00" * (size_of_headers + rdata_raw - len(out))
 
-    with open(_validate_output_path(path), "wb") as f:
+    with open(_validate_output_path(path, output_dir), "wb") as f:
         f.write(out)
 
 
-def is_forwarder_dll(path: str) -> None:
+def is_forwarder_dll(path: str, output_dir: str) -> None:
     """Minimal FLAT PE64 DLL with one FORWARDED export ("A" -> kernel32.GetProcAddress).
 
     Flat = SectionAlignment == FileAlignment, so every RVA equals its file
@@ -218,7 +217,8 @@ def is_forwarder_dll(path: str) -> None:
     rdata[32:36] = struct.pack("<I", export_dir_rva + names_off)     # AddressOfNames
     rdata[36:40] = struct.pack("<I", export_dir_rva + ordinals_off)  # AddressOfNameOrdinals
 
-    rdata_raw = align(len(rdata), file_alignment)
+    export_dir_size = len(rdata)
+    rdata_raw = align(export_dir_size, file_alignment)
     rdata_virt = align(len(rdata), section_alignment)
     rdata += b"\x00" * (rdata_raw - len(rdata))
 
@@ -252,7 +252,7 @@ def is_forwarder_dll(path: str) -> None:
     out += std_fields
 
     dd = bytearray(128)
-    dd[0:8] = struct.pack("<II", export_dir_rva, 40)  # Export Table (rva, size)
+    dd[0:8] = struct.pack("<II", export_dir_rva, export_dir_size)  # Export Table, including forwarder text
     out += dd
 
     section_header = b".rdata\x00\x00\x00"
@@ -272,16 +272,16 @@ def is_forwarder_dll(path: str) -> None:
     if len(out) < size_of_headers + rdata_raw:
         out += b"\x00" * (size_of_headers + rdata_raw - len(out))
 
-    with open(_validate_output_path(path), "wb") as f:
+    with open(_validate_output_path(path, output_dir), "wb") as f:
         f.write(out)
 
 
-def corrupt_header(path: str) -> None:
+def corrupt_header(path: str, output_dir: str) -> None:
     """MZ header with e_lfanew pointing FAR past the file end -> get_nt() == nullptr."""
     buf = bytearray(0x40)
     buf[0:2] = MZ_MAGIC
     buf[0x3C:0x40] = struct.pack("<I", 0xFFFFFFFF)  # invalid e_lfanew
-    with open(_validate_output_path(path), "wb") as f:
+    with open(_validate_output_path(path, output_dir), "wb") as f:
         f.write(buf)
 
 
@@ -292,9 +292,9 @@ def main() -> int:
     out_dir = sys.argv[1]
     os.makedirs(out_dir, exist_ok=True)
 
-    tiny_null_dll(os.path.join(out_dir, "tiny_null.dll"))
-    is_forwarder_dll(os.path.join(out_dir, "is_forwarder.dll"))
-    corrupt_header(os.path.join(out_dir, "corrupt_header.bin"))
+    tiny_null_dll(os.path.join(out_dir, "tiny_null.dll"), out_dir)
+    is_forwarder_dll(os.path.join(out_dir, "is_forwarder.dll"), out_dir)
+    corrupt_header(os.path.join(out_dir, "corrupt_header.bin"), out_dir)
 
     print(f"[fixtures] wrote 3 files into {out_dir}")
     return 0

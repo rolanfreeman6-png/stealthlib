@@ -1,0 +1,127 @@
+set(stage_dir "@CMAKE_CURRENT_BINARY_DIR@/package-consumer-stage")
+set(consumer_dir "@CMAKE_CURRENT_BINARY_DIR@/package-consumer-build")
+
+file(REMOVE_RECURSE "${stage_dir}" "${consumer_dir}")
+
+set(build_configuration "@CMAKE_BUILD_TYPE@")
+if(DEFINED STEALTH_TEST_CONFIG AND NOT "${STEALTH_TEST_CONFIG}" STREQUAL "")
+    set(build_configuration "${STEALTH_TEST_CONFIG}")
+endif()
+set(is_multi_config OFF)
+if(NOT "@CMAKE_CONFIGURATION_TYPES@" STREQUAL "")
+    set(is_multi_config ON)
+endif()
+if(build_configuration STREQUAL "" AND is_multi_config)
+    set(build_configuration Release)
+endif()
+
+set(executable_suffix "@CMAKE_EXECUTABLE_SUFFIX@")
+set(install_command "@CMAKE_COMMAND@" --install "@STEALTHLIB_PROJECT_BINARY_DIR@" --prefix "${stage_dir}")
+if(NOT build_configuration STREQUAL "")
+    list(APPEND install_command --config "${build_configuration}")
+endif()
+
+execute_process(
+    COMMAND ${install_command}
+    RESULT_VARIABLE install_result
+)
+if(NOT install_result EQUAL 0)
+    message(FATAL_ERROR "Installing StealthLib for the package-consumer test failed")
+endif()
+
+set(configure_command
+    "@CMAKE_COMMAND@"
+    -S "@CMAKE_CURRENT_SOURCE_DIR@/package_consumer"
+    -B "${consumer_dir}"
+    -G "@CMAKE_GENERATOR@"
+    "-DCMAKE_PREFIX_PATH=${stage_dir}"
+)
+if(NOT is_multi_config AND NOT build_configuration STREQUAL "")
+    list(APPEND configure_command "-DCMAKE_BUILD_TYPE=${build_configuration}")
+endif()
+if(NOT "@CMAKE_GENERATOR_PLATFORM@" STREQUAL "")
+    list(APPEND configure_command -A "@CMAKE_GENERATOR_PLATFORM@")
+endif()
+if(NOT "@CMAKE_GENERATOR_TOOLSET@" STREQUAL "")
+    list(APPEND configure_command -T "@CMAKE_GENERATOR_TOOLSET@")
+endif()
+
+execute_process(
+    COMMAND ${configure_command}
+    RESULT_VARIABLE configure_result
+)
+if(NOT configure_result EQUAL 0)
+    message(FATAL_ERROR "Configuring the installed-package consumer failed")
+endif()
+
+set(build_command "@CMAKE_COMMAND@" --build "${consumer_dir}")
+if(NOT build_configuration STREQUAL "")
+    list(APPEND build_command --config "${build_configuration}")
+endif()
+execute_process(
+    COMMAND ${build_command}
+    RESULT_VARIABLE build_result
+)
+if(NOT build_result EQUAL 0)
+    message(FATAL_ERROR "Building the installed-package consumer failed")
+endif()
+
+set(consumer_binary "${consumer_dir}/stealthlib_package_consumer${executable_suffix}")
+if(is_multi_config)
+    set(consumer_binary "${consumer_dir}/${build_configuration}/stealthlib_package_consumer${executable_suffix}")
+endif()
+execute_process(
+    COMMAND "${consumer_binary}"
+    RESULT_VARIABLE run_result
+)
+if(NOT run_result EQUAL 0)
+    message(FATAL_ERROR "Running the installed-package consumer failed")
+endif()
+
+set(subproject_dir "@CMAKE_CURRENT_BINARY_DIR@/subproject-consumer-build")
+file(REMOVE_RECURSE "${subproject_dir}")
+set(subproject_configure_command
+    "@CMAKE_COMMAND@"
+    -S "@CMAKE_CURRENT_BINARY_DIR@/subproject_consumer"
+    -B "${subproject_dir}"
+    -G "@CMAKE_GENERATOR@"
+)
+if(NOT is_multi_config AND NOT build_configuration STREQUAL "")
+    list(APPEND subproject_configure_command "-DCMAKE_BUILD_TYPE=${build_configuration}")
+endif()
+if(NOT "@CMAKE_GENERATOR_PLATFORM@" STREQUAL "")
+    list(APPEND subproject_configure_command -A "@CMAKE_GENERATOR_PLATFORM@")
+endif()
+if(NOT "@CMAKE_GENERATOR_TOOLSET@" STREQUAL "")
+    list(APPEND subproject_configure_command -T "@CMAKE_GENERATOR_TOOLSET@")
+endif()
+execute_process(
+    COMMAND ${subproject_configure_command}
+    RESULT_VARIABLE subproject_configure_result
+)
+if(NOT subproject_configure_result EQUAL 0)
+    message(FATAL_ERROR "Configuring the subproject consumer failed")
+endif()
+set(subproject_build_command "@CMAKE_COMMAND@" --build "${subproject_dir}")
+if(NOT build_configuration STREQUAL "")
+    list(APPEND subproject_build_command --config "${build_configuration}")
+endif()
+execute_process(
+    COMMAND ${subproject_build_command}
+    RESULT_VARIABLE subproject_build_result
+)
+if(NOT subproject_build_result EQUAL 0)
+    message(FATAL_ERROR "Building the subproject consumer failed")
+endif()
+
+set(subproject_binary "${subproject_dir}/stealthlib_subproject_consumer${executable_suffix}")
+if(is_multi_config)
+    set(subproject_binary "${subproject_dir}/${build_configuration}/stealthlib_subproject_consumer${executable_suffix}")
+endif()
+execute_process(
+    COMMAND "${subproject_binary}"
+    RESULT_VARIABLE subproject_run_result
+)
+if(NOT subproject_run_result EQUAL 0)
+    message(FATAL_ERROR "Running the subproject consumer failed")
+endif()

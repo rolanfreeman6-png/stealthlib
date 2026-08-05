@@ -17,7 +17,7 @@
 
 namespace stealth::detail {
 
-template<size_t N, size_t Idx>
+template<size_t N, uint64_t Idx>
 struct encrypted_string_impl {
     char encrypted[N]{};
     char buffer[N + 1]{};
@@ -186,7 +186,7 @@ struct encrypted_string_impl {
 #endif
 };
 
-template<size_t N, size_t Idx>
+template<size_t N, uint64_t Idx>
 struct encrypted_wstring_impl {
     wchar_t encrypted[N]{};
     wchar_t buffer[N + 1]{};

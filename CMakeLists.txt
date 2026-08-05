@@ -1,15 +1,11 @@
-cmake_minimum_required(VERSION 3.16)
-project(StealthLib VERSION 2.2.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.20)
+project(StealthLib VERSION 2.2.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    set(STEALTHLIB_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-else()
-    set(STEALTHLIB_ROOT_DIR ${CMAKE_SOURCE_DIR})
-endif()
+set(STEALTHLIB_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 option(STEALTH_BUILD_EXAMPLES    "Build examples"     ON)
 option(STEALTH_BUILD_TESTS       "Build tests"        ON)
@@ -73,7 +69,6 @@ if(STEALTH_CLANG_TIDY)
 endif()
 
 set(STEALTHLIB_HEADER_DIR ${STEALTHLIB_ROOT_DIR}/stealthlib)
-set(STEALTHLIB_THIRDPARTY_DIR ${STEALTHLIB_ROOT_DIR}/tests/third_party)
 set(STEALTHLIB_FIXTURES_DIR ${STEALTHLIB_ROOT_DIR}/tests/fixtures)
 set(STEALTHLIB_FIXTURES_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/fixtures)
 
@@ -81,7 +76,6 @@ add_library(stealthlib INTERFACE)
 # Include root is the repo root, so callers can use #include "stealthlib/stealth.hpp".
 target_include_directories(stealthlib INTERFACE
     $<BUILD_INTERFACE:${STEALTHLIB_ROOT_DIR}>
-    $<BUILD_INTERFACE:${STEALTHLIB_THIRDPARTY_DIR}>
     $<INSTALL_INTERFACE:include>
 )
 target_compile_features(stealthlib INTERFACE cxx_std_20)
@@ -101,12 +95,6 @@ else()
     )
 endif()
 
-if(MSVC)
-    target_compile_options(stealthlib INTERFACE /W4 /Zc:__cplusplus)
-else()
-    target_compile_options(stealthlib INTERFACE -Wall -Wextra -Wpedantic)
-endif()
-
 if(STEALTH_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
@@ -116,6 +104,7 @@ endif()
 if(STEALTH_BUILD_TESTS)
     enable_testing()
     include(CTest)
+    set(STEALTHLIB_PROJECT_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
     add_subdirectory(tests)
     if(STEALTH_BUILD_FIXTURES)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -123,7 +112,7 @@ if(STEALTH_BUILD_TESTS)
         # configure time, so the doctest PE tests find "fixtures/<file>"
         # with no build-order copy step (robust across single/multi-config
         # generators and parallel builds).
-        set(STEALTHLIB_FIXTURES_OUT_DIR "${CMAKE_BINARY_DIR}/tests/fixtures")
+        set(STEALTHLIB_FIXTURES_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/tests/fixtures")
         file(MAKE_DIRECTORY "${STEALTHLIB_FIXTURES_OUT_DIR}")
         execute_process(
             COMMAND "${Python3_EXECUTABLE}" "${STEALTHLIB_FIXTURES_DIR}/generate_pe.py" "${STEALTHLIB_FIXTURES_OUT_DIR}"
@@ -144,9 +133,9 @@ endif()
 include(CMakePackageConfigHelpers)
 
 install(TARGETS stealthlib EXPORT stealthlib-targets)
-install(FILES
-    ${STEALTHLIB_HEADER_DIR}/stealth.hpp
+install(DIRECTORY "${STEALTHLIB_HEADER_DIR}/"
     DESTINATION include/stealthlib
+    FILES_MATCHING PATTERN "*.hpp"
 )
 install(EXPORT stealthlib-targets
     FILE stealthlib-targets.cmake
@@ -168,4 +157,7 @@ install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/stealthlib-config-version.cmake
     DESTINATION lib/cmake/stealthlib
 )
-export(EXPORT stealthlib-targets FILE "${CMAKE_CURRENT_BINARY_DIR}/stealthlib-targets.cmake")
+export(EXPORT stealthlib-targets
+    FILE "${CMAKE_CURRENT_BINARY_DIR}/stealthlib-targets.cmake"
+    NAMESPACE stealthlib::
+)

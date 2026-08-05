@@ -26,7 +26,7 @@ static bool test_s_numeric() { return std::strcmp(S("1234567890"), "1234567890")
 static bool test_s_long() { return std::strcmp(S("This_is_a_very_long_string_used_for_testing_encryption_with_many_characters_1234567890_ABCDEFGHIJKLMNOPQRSTUVWXYZ"), "This_is_a_very_long_string_used_for_testing_encryption_with_many_characters_1234567890_ABCDEFGHIJKLMNOPQRSTUVWXYZ") == 0; }
 static bool test_s_apikey() { return std::strcmp(S("sk-prod-abc123def456ghi789"), "sk-prod-abc123def456ghi789") == 0; }
 static bool test_s_connstr() { return std::strcmp(S("Server=db.local;Password=P@ssw0rd!"), "Server=db.local;Password=P@ssw0rd!") == 0; }
-static bool test_s_stable() { auto s = S("stable_test"); return std::strcmp(s, s) == 0; }
+static bool test_s_stable() { auto s = S("stable_test"); const char* a = s; const char* b = s; return a == b && std::strcmp(a, "stable_test") == 0; }
 static bool test_s_strlen() { auto s = S("measure"); return std::strlen(s) == 7; }
 static bool test_s_nullterm() { auto s = S("term"); return s[4] == '\0'; }
 static bool test_s_multi() { auto a = S("first"); auto b = S("second"); return std::strcmp(a, "first") == 0 && std::strcmp(b, "second") == 0; }
@@ -37,7 +37,7 @@ static bool test_sw_single() { return std::wcscmp(SW(L"X"), L"X") == 0; }
 static bool test_sw_cyrillic() { return std::wcscmp(SW(L"\x041F\x0440\x0438\x0432\x0435\x0442"), L"\x041F\x0440\x0438\x0432\x0435\x0442") == 0; }
 static bool test_sw_cjk() { return std::wcscmp(SW(L"\x4F60\x597D"), L"\x4F60\x597D") == 0; }
 static bool test_sw_special() { return std::wcscmp(SW(L"!@#$%^&*()"), L"!@#$%^&*()") == 0; }
-static bool test_sw_stable() { auto s = SW(L"stable"); return std::wcscmp(s, s) == 0; }
+static bool test_sw_stable() { auto s = SW(L"stable"); const wchar_t* a = s; const wchar_t* b = s; return a == b && std::wcscmp(a, L"stable") == 0; }
 static bool test_sw_wcslen() { auto s = SW(L"wide"); return std::wcslen(s) == 4; }
 
 static bool test_ss_basic() { stealth::secure_string<256> ss("secret"); return std::strcmp(ss.c_str(), "secret") == 0; }
@@ -133,7 +133,7 @@ static bool test_sapi_fake() { stealth::stealth_api<void()> api("kernel32.dll", 
 static bool test_sapi_reset() { stealth::stealth_api<DWORD()> api("kernel32.dll", "GetTickCount"); api.reset(); return !api.is_valid(); }
 static bool test_sapi_reset_resolve() { stealth::stealth_api<DWORD()> api; api.reset("kernel32.dll", "GetTickCount"); return api.is_valid(); }
 
-static bool test_version() { return std::strcmp(stealth::version(), "2.2.0") == 0; }
+static bool test_version() { return std::strcmp(stealth::version(), "2.2.1") == 0; }
 static bool test_workflow_b64() { auto secret = S("my_api_key_123"); auto b64 = stealth::encoding::base64_encode(secret.c_str()); auto decoded = stealth::encoding::base64_decode(b64); if (!decoded.has_value()) return false; return *decoded == "my_api_key_123"; }
 static bool test_workflow_hex_xor() { auto secret = S("confidential"); auto hex = stealth::encoding::hex_encode(secret.c_str()); auto hex_decoded_opt = stealth::encoding::hex_decode(hex); if (!hex_decoded_opt.has_value()) return false; auto hex_decoded = std::move(*hex_decoded_opt); stealth::encoding::xor_key<16> key{"xorkey"}; stealth::encoding::xor_encode(hex_decoded.data(), hex_decoded.size(), key); stealth::encoding::xor_decode(hex_decoded.data(), hex_decoded.size(), key); std::string result(hex_decoded.begin(), hex_decoded.end()); return result == "confidential"; }
 
@@ -216,7 +216,7 @@ int main() {
     T("stealth_api reset clears", test_sapi_reset()); T("stealth_api reset resolves new", test_sapi_reset_resolve());
 
     std::cout << "\n--- Version & Integration (92-94) ---\n";
-    T("version 1.0.0", test_version()); T("workflow: encrypt->base64->decode", test_workflow_b64());
+    T("version 2.2.1", test_version()); T("workflow: encrypt->base64->decode", test_workflow_b64());
     T("workflow: encrypt->hex->xor->decode", test_workflow_hex_xor());
 
     std::cout << "\n========================================\n";

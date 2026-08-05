@@ -1,22 +1,11 @@
-// StealthLib v2.2.0 example: HASH-BASED API RESOLUTION
+// StealthLib v2.2.1 example: HASH-BASED API RESOLUTION
 // ---------------------------------------------------------
 // What you SEE in the source: hashes of API/module names.
-// What you DO NOT see in the binary (NOT visible to `strings.exe`):
-//   - "user32.dll"
-//   - "kernel32.dll"
-//   - "MessageBoxW"
-//   - "GetTickCount64"
-//   - "GetComputerNameW"
-//
-// In the compiled binary, the module names and function names are replaced
-// with 64-bit FNV-1a hashes, computed at compile time. The resolution walks
-// PEB -> LDR -> InLoadOrderModuleList -> export directory, hashing each
-// candidate name until it matches. No symbols appear in .rdata, .strings,
-// or any IAT entry that a static reverse engineer could grep for.
-//
-// Combined with `S("...")` macro for string literals (also compiled out of
-// the .text section), this is the same "xorstr simplicity" pattern applied
-// to API resolution. There are no third-party headers required.
+// This demo prints diagnostic names, so it is not a no-strings sample.
+// Production code that needs API-name elision must avoid printing or storing
+// the source names and should verify the final binary for its own toolchain.
+// Hash-based resolution itself uses 64-bit FNV-1a values and walks loaded
+// modules through the PEB export table.
 
 #include "stealthlib/stealth.hpp"
 #include <cstring>
@@ -88,7 +77,7 @@ int main() {
     }
     std::cout << "    scope exit: re-encrypted (string not visible in this dump)\n";
 #else
-    std::cout << "[*] Platform: non-Windows. Hash-based resolver is no-op here.\n";
+    std::cout << "[*] Platform: non-Windows. Hash-based resolver APIs are unavailable here.\n";
     constexpr uint64_t h = stealth::hashes::fnv("user32.dll");
     std::cout << "[*] hash('user32.dll') = " << h << "\n";
 #endif

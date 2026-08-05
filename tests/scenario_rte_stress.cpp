@@ -121,27 +121,44 @@ int main() {
     // Stress loop: 50000 cycles cycling each literal through unlock/destroy.
     auto start = std::chrono::steady_clock::now();
     std::size_t total = 0;
+    auto check_narrow_unlock = [&](auto& literal, const char* expected) -> bool {
+        {
+            auto guard = literal.unlock();
+            if (std::strcmp(guard.c_str(), expected) != 0) return false;
+        }
+        ++total;
+        if constexpr (requires { literal.impl.decrypted; }) {
+            return !literal.impl.decrypted;
+        } else {
+            return true;
+        }
+    };
+    auto check_wide_unlock = [&](auto& literal, const wchar_t* expected) -> bool {
+        {
+            auto guard = literal.unlock();
+            if (!cmp_w(guard.c_str(), expected)) return false;
+        }
+        ++total;
+        return !literal.impl.decrypted;
+    };
     for (int i = 0; i < 50000; ++i) {
-        { auto g = s0.unlock();  (void)g; }
-        { auto g = s1.unlock();  (void)g; }
-        { auto g = s2.unlock();  (void)g; }
-        { auto g = s3.unlock();  (void)g; }
-        { auto g = s4.unlock();  (void)g; }
-        { auto g = s5.unlock();  (void)g; }
-        { auto g = s6.unlock();  (void)g; }
-        { auto g = s7.unlock();  (void)g; }
-        { auto g = s8.unlock();  (void)g; }
-        { auto g = s9.unlock();  (void)g; }
-        { auto g = s10.unlock(); (void)g; }
-        { auto g = s11.unlock(); (void)g; }
-        { auto g = s12.unlock(); (void)g; }
-        { auto g = w_tiny.unlock();  (void)g; }
-        { auto g = w_short.unlock(); (void)g; }
-        // NOTE: w_med / w_long skipped from unlock() churn because their c_str
-        // buffers would race against the previous (still-in-scope) narrow
-        // unlock guards on the same iteration. Both still get cold-path
-        // decrypt coverage in the warm-up sweep above; the soak here just
-        // doesn't include them.
+        if (!check_narrow_unlock(s0, "")) return 1;
+        if (!check_narrow_unlock(s1, "a")) return 1;
+        if (!check_narrow_unlock(s2, "ab")) return 1;
+        if (!check_narrow_unlock(s3, "k32")) return 1;
+        if (!check_narrow_unlock(s4, "user")) return 1;
+        if (!check_narrow_unlock(s5, "ntdll")) return 1;
+        if (!check_narrow_unlock(s6, "kernel")) return 1;
+        if (!check_narrow_unlock(s7, "kernel32.dll")) return 1;
+        if (!check_narrow_unlock(s8, "MessageBoxW")) return 1;
+        if (!check_narrow_unlock(s9, "CreateFileW")) return 1;
+        if (!check_narrow_unlock(s10, "192.168.1.1")) return 1;
+        if (!check_narrow_unlock(s11, "https://example.com/api/v2/submit?key=ABCD1234XYZ")) return 1;
+        if (!check_narrow_unlock(s12, "Authorization: Bearer abcdef0123456789ABCDEF")) return 1;
+        if (!check_wide_unlock(w_tiny, L"X")) return 1;
+        if (!check_wide_unlock(w_short, L"C:\\Temp")) return 1;
+        if (!check_wide_unlock(w_med, L"\\Device\\HarddiskVolume2\\Windows\\System32\\drivers\\etc\\hosts")) return 1;
+        if (!check_wide_unlock(w_long, L"\\Registry\\Machine\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\dummy.exe")) return 1;
     }
     auto end = std::chrono::steady_clock::now();
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();

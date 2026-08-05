@@ -21,6 +21,7 @@
 #include "stealthlib/stealth.hpp"
 
 #include <atomic>
+#include <algorithm>
 #include <cstdio>
 #include <thread>
 #include <vector>
@@ -31,6 +32,7 @@ int main() {
 
     // Contract-respecting harness: per-thread instances + start-gun.
     std::atomic<int> ready{0};
+    std::atomic<std::size_t> waiting{0};
     const std::size_t N = std::min<std::size_t>(8u,
         std::thread::hardware_concurrency() == 0 ? 1u
                                                  : std::thread::hardware_concurrency());
@@ -39,6 +41,7 @@ int main() {
     for (std::size_t t = 0; t < N; ++t) {
         ts.emplace_back([&]() {
             auto lit = S("STEALTHLIB_THREAD_DECRYPT_RACE_PROBE_0001");
+            waiting.fetch_add(1, std::memory_order_release);
             while (ready.load(std::memory_order_acquire) == 0) {}
             for (std::size_t i = 0; i < iters; ++i) {
                 const char* p = *lit;
@@ -49,6 +52,7 @@ int main() {
             }
         });
     }
+    while (waiting.load(std::memory_order_acquire) != N) {}
     ready.store(1, std::memory_order_release);
     for (auto& th : ts) th.join();
 

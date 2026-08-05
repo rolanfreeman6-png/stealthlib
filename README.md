@@ -1,472 +1,130 @@
-<div align="center">
-
 # StealthLib
 
-### Zero strings. Zero imports. Zero plaintext in binary.
+Header-only C++20 utilities for compile-time literal obfuscation, portable
+encoding and memory helpers, plus Windows-only export resolution and
+best-effort process inspection.
 
-**Header-only C++20 Windows hardening library — compile-time string obfuscation, hash-based API resolution, anti-debug suite, IAT/EAT integrity, VM detection.**
+## Scope
 
-[![CI](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/ci.yml/badge.svg)](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/ci.yml)
-[![Heavy CI](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/heavy-ci.yml/badge.svg)](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/heavy-ci.yml)
-[![Version](https://img.shields.io/badge/version-2.2.0-blue)](https://github.com/rolanfreeman6-png/stealthlib/releases/tag/v2.2.0)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![C++20](https://img.shields.io/badge/C%2B%2B-20-orange)](https://en.cppreference.com/w/cpp/20)
-[![Coverage](https://img.shields.io/badge/coverage-94.6%25-brightgreen)](#coverage)
-[![Mutation](https://img.shields.io/badge/mutation-100%25-brightgreen)](#mutation-testing)
-[![CodeQL](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml/badge.svg)](https://github.com/rolanfreeman6-png/stealthlib/actions/workflows/codeql.yml)
-[![SonarCloud](https://img.shields.io/badge/SonarCloud-A_(0_bugs%2C_0_vuln)-brightgreen)](docs/AUDIT_REPORT.html)
-[![PVS-Studio](https://img.shields.io/badge/PVS--Studio-0%20findings-brightgreen)](docs/AUDIT_REPORT.html)
-[![Coverity](https://img.shields.io/badge/Coverity-0.17%20density-brightgreen)](https://scan.coverity.com/projects/rolanfreeman6-png-stealthlib)
+`S("...")` and `SW(L"...")` transform literals at compile time and restore
+them lazily. This is XOR **obfuscation**, not cryptography. The library does
+not promise a binary without imports, API names, debug strings, or plaintext
+outside the specific literals passed to `S`/`SW`.
 
-**9.5 / 10 — luxury-class, verified on 5 platforms, independently audited by PVS-Studio + SonarCloud + CodeQL + Coverity**
+Windows API resolution accepts a loaded module and resolves named exports by
+name or FNV-1a hash. Forwarded exports are followed to their terminal loaded
+module without loading a new DLL. `compare_iat_thunk()` checks a named import
+in an **importing image** against the current terminal export address.
 
-</div>
+## Build and test
 
----
-
-## Why StealthLib
-
-Every C++ Windows binary has a problem: `strings.exe` reads your secrets, debuggers attach silently, IAT hooks redirect your API calls, and VM sandboxes fingerprint your code. Existing tools fix **one** of these. StealthLib fixes **all of them** in a single header include.
-
-```cpp
-#include "stealthlib/stealth.hpp"
-
-// Plaintext NEVER appears in .rodata — consteval encrypts at compile time
-auto api_key = S("sk-live-abc123def456ghi789");
-
-// No "user32.dll" or "MessageBoxW" string in the binary — only two 64-bit hashes
-constexpr auto h_mod = stealth::hashes::fnv("user32.dll");
-constexpr auto h_fn  = stealth::hashes::fnv("MessageBoxW");
-auto msg = stealth::get_function_by_hash<int(HWND, LPCWSTR, LPCWSTR, UINT)>(h_mod, h_fn);
-
-// Multi-channel anti-debug: PEB + NtQuery + rdtsc timing + hardware breakpoints
-if (stealth::detection::scan().any()) escalate();
-
-// IAT hook detection: compare runtime thunk vs frozen INT snapshot
-if (stealth::integrity::compare_iat_thunk("kernel32.dll", "GetProcAddress").hooked) abort();
-```
-
-**What lands in the binary:** two 64-bit numbers and encrypted ciphertext. No plaintext strings. No API names. `strings.exe` finds nothing.
-
----
-
-## What's inside
-
-| Module | What it does | Key API |
-|--------|-------------|---------|
-| **String encryption** | `consteval` XOR encrypts literals at compile time — plaintext never emitted to `.rodata` | `S("...")`, `SW(L"...")`, `.unlock()` |
-| **Hash API resolution** | Resolve Win32 exports by FNV-1a 64-bit hash — no API name strings in binary | `get_function_by_hash<T>()`, `stealth_api<T>()`, `module_loader()` |
-| **Anti-debug** | 4-channel detection: PEB `BeingDebugged`, `NtQueryInformationProcess`, `rdtsc` timing anomaly, DR0-DR3 hardware breakpoints | `detection::scan()`, `detection::signals` |
-| **VM detection** | CPUID hypervisor bit + DMI/registry vendor strings + small-disk heuristic → 0..3 confidence | `vmdetect::scan()` |
-| **IAT integrity** | Compare runtime IAT entry vs OriginalFirstThunk snapshot; detect post-load hooks | `integrity::compare_iat_thunk()` |
-| **EAT forwarder detection** | PE spec-correct: RVA inside export directory = forwarder string (not `.` heuristic) | `integrity::is_eat_forwarded()` |
-| **Inline-hook detection** | SHA-256 (FIPS-180-4) of function prologue first N bytes, constant-time compared | `integrity::prologue_sha256()` |
-| **SHA-256** | Inline FIPS-180-4 implementation, 4 KAT vectors verified byte-exact | `detail::sha256`, `detail::sha256_oneshot()` |
-| **Encoding** | base64, hex, XOR, rot13 — all with `std::optional` fail-closed on invalid input | `encoding::base64_encode/decode`, `hex_encode/decode`, `xor_crypt` |
-| **Secure memory** | `volatile` zero-wipe, constant-time comparison | `memory::secure_zero()`, `memory::compare_constant_time()` |
-| **Per-build key** | CMake generates `STEALTH_BUILD_KEY` from git SHA + timestamp + MD5 → 16 XOR variants per build | Auto via CMake, hard `#error` if missing |
-
----
-
-## Quick start
-
-### CMake (recommended)
-
-```bash
-git clone https://github.com/rolanfreeman6-png/stealthlib.git
-cd stealthlib
+```sh
 cmake -S . -B build -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
 cmake --build build --parallel
-cd build && ctest --output-on-failure
+ctest --test-dir build --output-on-failure
 ```
 
-### 30-second integration
+The default test configuration generates PE fixtures, so it requires Python
+3. Set `-DSTEALTH_BUILD_FIXTURES=OFF` when those fixture tests are not needed.
+
+The configured suite includes literal, encoding, PE/export, IAT, package
+installation, subproject integration, and thread-confinement regressions.
+It also verifies a consumer built with `find_package(stealthlib)` and a
+separate consumer built through `add_subdirectory`, the mechanism used by
+`FetchContent`.
+
+## Use
 
 ```cpp
 #include "stealthlib/stealth.hpp"
-#include <iostream>
+#include <windows.h>
 
-int main() {
-    // 1. Encrypt sensitive strings — plaintext never in binary
-    auto key = S("sk-prod-xxxxxxxxxxxxxxxxxxxx");
-    std::cout << "Key: " << key << "\n";
-
-    // 2. RAII unlock — plaintext lives only inside scope, then re-encrypted
-    {
-        auto lock = key.unlock();
-        send_request(lock.c_str());  // plaintext available here
-    }                                // re-encrypted + volatile-wiped at scope exit
-
-    // 3. Anti-debug — 4 channels, one call
-    auto s = stealth::detection::scan();
-    if (s.any()) {
-        std::cout << "Debugger detected (channels: PEB=" << s.peb_debug_flag
-                  << " remote=" << s.remote_debugger
-                  << " timing=" << s.timing_anomaly
-                  << " hwbp=" << s.hwbp_count << ")\n";
-    }
-}
-```
-
-> **Important:** `S("...")` is a preprocessor macro. Use the bare form — `stealth::S("...")` silently bypasses encryption.
-
----
-
-## API tour
-
-### String encryption + RAII
-
-```cpp
-auto secret = S("my_api_key_123");
-auto wide   = SW(L"Wide string secret");
-
-// Access plaintext (decrypts lazily, caches in buffer[])
-std::cout << secret.c_str() << "\n";
-
-// RAII narrow window — auto re-encrypt at scope exit
+auto token = S("example-token");
 {
-    auto lock = secret.unlock();
-    use(lock.c_str());  // plaintext here
-}                        // buffer[] volatile-wiped, encrypted[] restored
-```
-
-### Hash-based API resolution
-
-```cpp
-using MsgBox_t = int(HWND, LPCWSTR, LPCWSTR, UINT);
-
-// Compile-time hashes — no strings in binary
-constexpr auto h_user32 = stealth::hashes::fnv("user32.dll");
-constexpr auto h_msgbox = stealth::hashes::fnv("MessageBoxW");
-
-// Three ways to resolve:
-auto fn1 = stealth::get_function_by_hash<MsgBox_t>(h_user32, h_msgbox);
-auto fn2 = stealth::stealth_api<MsgBox_t>(h_user32, h_msgbox);
-stealth::module_loader mod(h_user32);
-auto fn3 = mod.get_function_by_hash<MsgBox_t>(h_msgbox);
-```
-
-### IAT/EAT integrity
-
-```cpp
-// IAT hook detection — compares runtime IAT vs frozen INT snapshot
-auto info = stealth::integrity::compare_iat_thunk("kernel32.dll", "GetProcAddress");
-if (info.hooked) {
-    std::cout << "Hooked! deviation=" << info.deviation << " bytes\n";
+    auto unlocked = token.unlock();
+    consume(unlocked.c_str());
 }
-
-// EAT forwarder check — PE spec-correct (RVA inside export dir = forwarder)
-bool forwarded = stealth::integrity::is_eat_forwarded("kernel32.dll", "HeapAlloc");
-
-// Inline hook detection — SHA-256 of prologue bytes
-uint8_t expected[32] = { /* known-good digest */ };
-bool tampered = !stealth::integrity::prologue_sha256(my_func, 16, expected);
 ```
 
-### VM detection
+On Windows, use a function type or function-pointer type with hash lookup:
 
 ```cpp
-auto vm = stealth::detection::vmdetect::scan();
-std::cout << "Hypervisor bit: " << vm.cpuid_hypervisor_bit << "\n"
-          << "Vendor strings: " << vm.vendor_strings << "\n"
-          << "Small disk:     " << vm.small_disk << "\n"
-          << "Confidence:     " << vm.vm_confidence << "/3\n";
+using MessageBoxW_t = int(HWND, LPCWSTR, LPCWSTR, UINT);
+constexpr auto module_hash = stealth::hashes::fnv("user32.dll");
+constexpr auto function_hash = stealth::hashes::fnv("MessageBoxW");
+auto message_box = stealth::get_function_by_hash<MessageBoxW_t>(
+    module_hash, function_hash);
 ```
 
----
+The target module must already be loaded. For a forwarded export, each
+forwarded-to module must also already be loaded; the resolver deliberately
+does not change process module reference counts.
 
-## Architecture
+## Installation
 
-```
-stealthlib/
-  stealth.hpp                  ← 58 LoC umbrella (the only #include users need)
-  detail/
-    version.hpp                ← 30 LoC  — version macros + build key check
-    hashes.hpp                 ← 120 LoC — FNV-1a 64-bit, DJB2, mix, derive
-    sha256.hpp                 ← 110 LoC — FIPS-180-4 SHA-256
-    encryption.hpp             ← 247 LoC — consteval XOR + SSE2 fast path
-    guards.hpp                 ← 100 LoC — RAII unlock/re-encrypt guards
-    secure_string.hpp          ← 40 LoC  — secure_string<MaxSize>
-  encoding/
-    encoding.hpp               ← 200 LoC — base64, hex, XOR, rot13
-  memory/
-    memory.hpp                 ← 20 LoC  — secure_zero, constant-time compare
-  detection/
-    debug.hpp                  ← 160 LoC — PEB, NtQuery, rdtsc, HW breakpoints
-    signals.hpp                ← 30 LoC  — signals struct + scan()
-  vmdetect/
-    vmdetect.hpp               ← 120 LoC — CPUID, DMI/registry, disk heuristic
-  pe/
-    pe_layout.hpp              ← 90 LoC  — PE structs, PEB walk, get_module_base
-    pe_parser.hpp              ← 120 LoC — get_proc, module_loader, stealth_api
-  integrity/
-    integrity.hpp              ← 120 LoC — IAT/EAT checks, prologue SHA-256
+### CMake package
+
+```sh
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/your/prefix \
+  -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_TESTS=OFF
+cmake --build build
+cmake --install build
 ```
 
-**15 header files. Max 247 LoC per file. Single `#include` for users.**
-
----
-
-## LoC analysis
-
-| Component | Files | LoC | % of total |
-|-----------|-------|-----|-----------|
-| Core headers (`stealthlib/`) | 15 | 1,545 | 27.5% |
-| Tests (`tests/*.cpp`) | 23 | 1,959 | 34.9% |
-| Examples (`examples/*.cpp`) | 6 | 466 | 8.3% |
-| CI/CD (`.github/` + `.gitlab-ci.yml`) | 4 | 198 | 3.5% |
-| Fuzz targets (`fuzz_*.cpp`) | 3 | 142 | 2.5% |
-| Docs (`docs/*.md`) | 7 | 1,300+ | 23.2% |
-| **Total project** | **58** | **~5,610** | **100%** |
-
-**Test-to-code ratio: 1.27:1** — more test code than production code.
-
----
-
-## Verification matrix
-
-### Platforms
-
-| Platform | Compiler | Tests | Sanitizers | Status |
-|----------|----------|-------|------------|--------|
-| Windows | MSVC 2022 (`/W4`) | 18/18 ctest | — | ✓ 0 warnings |
-| Windows | Clang-cl (`/W4`) | compile clean | — | ✓ 0 warnings |
-| Linux | GCC 15.2 (`-Werror -Wshadow -Wconversion`) | 14/14 ctest | ASan + UBSan | ✓ 0 findings |
-| Linux | Clang | 14/14 ctest | — | ✓ CI green |
-| macOS | Clang (arm64) | 14/14 ctest | — | ✓ CI green |
-
-### Static analysis
-
-| Tool | Configuration | Result |
-|------|--------------|--------|
-| **PVS-Studio 7.02** | Full analysis, 27 source files, all analyzers enabled | ✓ **0 findings** — clean |
-| clang-tidy-18 | `.clang-tidy` config, 116,507 checks suppressed | 974 shown, 2 real `bugprone` findings (out-of-scope) |
-| cppcheck | `--enable=all --inline-suppr` | 0 errors, 0 performance, 0 real warnings |
-| MSVC `/analyze` | SAL annotations | 0 unsuppressed in our code (1 in SDK `winreg.h`) |
-| **SonarCloud** | CI-based analysis, 13 domain rules suppressed | Reliability A (0 bugs) Security A (0 vuln) Maintainability A Coverage 90.5% [report](docs/AUDIT_REPORT.html) |
-| **CodeQL** | `security-extended` + `security-and-quality` | ✓ CI green |
-| **Coverity Scan** | Deep data flow analysis, CWE Top 25 | ✓ **Defect density 0.17** (2× better than OSS average 0.35) — [dashboard](https://scan.coverity.com/projects/rolanfreeman6-png-stealthlib) |
-| **Semgrep** | `p/c++` + `p/security-audit` rulesets | ✓ CI green |
-
-### Sanitizers
-
-| Sanitizer | Scope | Result |
-|-----------|-------|--------|
-| ASan (AddressSanitizer) | All portable tests | ✓ 0 findings |
-| UBSan (UndefinedBehavior) | All portable tests | ✓ 0 findings |
-| TSan (ThreadSanitizer) | 100 consecutive runs | ✓ 100/100 zero races |
-| TSan adversarial probe | Shared-instance (forbidden pattern) | ✓ Race detected — contract proven real |
-| MSan (MemorySanitizer) | 4 portable tests | ✓ 0 findings (doctest internal noise excluded) |
-
-### Fuzz testing
-
-| Target | Duration | Executions | Exec/sec | Crashes |
-|--------|----------|------------|----------|---------|
-| `fuzz_hashes` | 4 hours | 1,560,966,261 | 108,392 | **0** |
-| `fuzz_strings` | 4 hours | ~1.5 billion | ~108,000 | **0** |
-| `fuzz_decoders` | 4 hours | ~1.5 billion | ~108,000 | **0** |
-| **Total** | **12 hours** | **~4.5 billion** | — | **0** |
-
-### Coverage
-
-| Metric | Value | Target | Status |
-|--------|-------|--------|--------|
-| Line coverage | 94.6% (423/447) | ≥85% | ✓ |
-| Function coverage | 99.4% (307/309) | — | ✓ |
-| Branch coverage (gcov) | 90.43% executed (170/188) | ≥75% | ✓ |
-
-### Mutation testing
-
-40 mutations across 8 categories applied to encryption, hashes, SHA-256, memory, and encoding modules. Each mutation was tested against test binaries with known-answer assertions. **All 40 killed (100%).**
-
-| Metric | Value |
-|--------|-------|
-| Total mutations | 40 (36 ran, 4 skipped — sed regex) |
-| Killed (tests caught) | 36 (100%) |
-| Survived (tests missed) | 0 (0%) |
-| **Mutation score** | **100% — class A (excellent)** |
-
-**Mutation categories covered:**
-
-| Category | Mutations | Killed | Example |
-|----------|-----------|--------|---------|
-| Constants ±1 | 8 | 8 | FNV prime, SHA-256 K[0], DJB2 init |
-| Operator changes | 5 | 5 | XOR→+, h<<5→h<<4, ^=→+= |
-| Off-by-one loops | 4 | 4 | `i<16`→`i<=16`, `i+2<len`→`i+2<=len` |
-| Condition removal | 3 | 3 | Remove null check, remove size%4 check |
-| Branch swap | 3 | 3 | Invert `pad2 && !pad3`, invert `==0` |
-| Volatile removal | 2 | 2 | Remove `volatile` from secure_zero/reencrypt |
-| Type narrowing | 2 | 2 | `uint32_t`→`uint16_t` in SHA-256 |
-| Dead code injection | 2 | 2 | Double 0x80 padding, skip first char |
-| Delete statement | 2 | 2 | Delete `process_block`, delete `while` loop |
-| Buffer/value changes | 5 | 5 | NUL→1, mask 0xA5→0x00, alphabet A→B |
-
-### Other guarantees
-
-| Guarantee | How verified | Status |
-|-----------|-------------|--------|
-| `.rodata` plaintext elision | `binary_scan_test` — `strings | grep sentinel` = 0 matches | ✓ MSVC + GCC |
-| Deterministic builds | Same `STEALTH_BUILD_KEY` → byte-identical SHA-256 | ✓ |
-| SHA-256 correctness | 4 FIPS-180-4 KAT vectors, byte-exact | ✓ |
-| SSE2 parity | Scalar vs `_mm_xor_si128` produce identical output | ✓ |
-
----
-
-## CI/CD
-
-### GitHub Actions — 5 workflows (unlimited for public repo)
-
-| Workflow | Jobs | What | Trigger |
-|----------|------|------|---------|
-| **CI** | 3 | Windows MSVC + Linux GCC + macOS Clang build + ctest | every push |
-| **Heavy CI** | 10 | ASan, UBSan, TSan, MSan, strict warnings, clang-tidy, cppcheck, coverage, Mull mutation, 3× fuzz | every push + nightly |
-| **CodeQL** | 1 | `security-extended` + `security-and-quality` SAST | every push + weekly |
-| **Coverity Scan** | 1 | Deep data flow analysis, CWE Top 25 | every push + weekly |
-| **SonarCloud** | 1 | Cloud SAST with A ratings | every push |
-
----
-
-## Tests
-
-### Test suite overview
-
-| Category | Files | What they test |
-|----------|-------|---------------|
-| **Unit tests** | `string_test.cpp`, `test_hashes.cpp`, `test_sha256.cpp`, `test_sse2_parity.cpp` | String encryption/decryption, FNV/DJB2 hashes, SHA-256 KAT vectors, SSE2 vs scalar parity |
-| **Integration** | `portable_smoke_test.cpp`, `comprehensive_test.cpp`, `integration_test.cpp` | Full API surface: S(), SW(), encoding, memory, hashes, detection, version |
-| **Regression** | `regression_test.cpp`, `regression_tu_a.cpp`, `regression_tu_b.cpp` | Decode rejection (bad padding, invalid chars), cross-TU literal uniqueness |
-| **Concurrent** | `test_concurrent_decrypt.cpp`, `test_deterministic_concurrency.cpp` | TSan contract: per-thread instances + start-gun barrier + adversarial race probe + deterministic 200K operations |
-| **Differential** | `differential/diff_test_stealth.cpp`, `differential/diff_test_xorstr.cpp` | Byte-by-byte comparison vs xorstr: same strings, same compiler, same platform |
-| **Windows-only** | `peb_test.cpp`, `test_peb_windows.cpp`, `doctest_peb_test.cpp`, `test_integrity.cpp` | PEB walk, module base by hash, IAT/EAT checks, PE fixture parsing |
-| **Fuzz** | `fuzz_hashes.cpp`, `fuzz_strings.cpp`, `fuzz_decoders.cpp` | libFuzzer harnesses: random inputs to hashes, strings, encoders |
-| **Binary scan** | `binary_scan_target.cpp`, `binary_scan.cmake` | Verifies plaintext sentinel does NOT appear in compiled binary |
-| **PE fixtures** | `generate_pe.py` | Generates 3 flat PE files: `is_forwarder.dll`, `tiny_null.dll`, `corrupt_header.bin` |
-
-### Threading contract
-
-StealthLib uses **Variant B** (per-instance thread confinement). Each `S("...")` instance must be confined to a single thread. Concurrent access to the **same** instance is UB.
-
-- Contract-respecting harness: 100/100 TSan runs, **zero races**
-- Adversarial probe (shared instance): TSan **correctly detects** the race — contract is real
-
-See [`docs/THREADING.md`](docs/THREADING.md) for the full happens-before analysis.
-
----
-
-## Documentation
-
-| Document | What it covers |
-|----------|---------------|
-| [docs/AUDIT_REPORT.html](docs/AUDIT_REPORT.html) | **Independent audit dashboard** — PVS-Studio 0 findings + SonarCloud A ratings + CodeQL + Coverity 0.17 density + all sanitizers + fuzz + mutation |
-| [docs/THREADING.md](docs/THREADING.md) | Variant B contract, happens-before relations, safe/unsafe operations table, reference test |
-| [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | What is protected, what is NOT, trust boundaries, recommended composition |
-| [docs/INSTALL.md](docs/INSTALL.md) | Installation guide |
-| [docs/SECURITY.md](docs/SECURITY.md) | Security policy |
-| [AUDIT_v2.1.3_RESPONSE.md](AUDIT_v2.1.3_RESPONSE.md) | 22 audit findings, all FIXED with commit SHAs |
-
----
-
-## Differential testing (vs xorstr)
-
-StealthLib was tested byte-by-byte against [xorstr](https://github.com/JustasMasiulis/xorstr) — the most popular C++ string obfuscator. Same strings, same compiler (g++ -O2), same platform.
-
-```
-╔══════════════════════════════════════════════════════════════════════╗
-║  DIFFERENTIAL TESTING: StealthLib S() vs xorstr                       ║
-╠══════════════════════════════════════════════════════════════════════╣
-║                                                                       ║
-║  ┌────────────────────────┬───────────────┬─────────────────┐         ║
-║  │ Metric                 │ StealthLib    │ xorstr          │         ║
-║  ├────────────────────────┼───────────────┼─────────────────┤         ║
-║  │ Functional tests       │ 7/7 ✓ PASS    │ 3/7 ✗ FAIL      │         ║
-║  │ Empty string S("")     │ ✓             │ ✗ unsupported   │         ║
-║  │ Wide string SW(L"")    │ ✓             │ ✗ unsupported   │         ║
-║  │ RAII unlock/reencrypt  │ ✓             │ ✗ unsupported   │         ║
-║  │ Per-build key rotation │ ✓ 16 variants │ ✗               │         ║
-║  │ .rodata elision        │ consteval ✓   │ constexpr ~     │         ║
-║  │ AVX2 required          │ no            │ yes             │         ║
-║  │ Compiler warnings      │ 0             │ 4 (uninit)      │         ║
-║  │ Binary size            │ 16,752 bytes  │ 16,200 bytes    │         ║
-║  │ Compile time           │ 1.8s          │ 2.2s            │         ║
-║  │ Deterministic build    │ ✓             │ ✓               │         ║
-║  │ Plaintext leaks        │ 0             │ 0               │         ║
-║  └────────────────────────┴───────────────┴─────────────────┘         ║
-║                                                                       ║
-║  Winner: StealthLib 10/12 metrics                                     ║
-║  xorstr wins binary size (552 bytes smaller — fewer features)         ║
-║  xorstr fails 4/7 tests: dangling pointer in xorstr_() macro          ║
-║                                                                       ║
-╚══════════════════════════════════════════════════════════════════════╝
+```cmake
+find_package(stealthlib CONFIG REQUIRED)
+target_link_libraries(your_target PRIVATE stealthlib::stealthlib)
 ```
 
-**xorstr bug found:** `xorstr_("...")` returns `char*` from a temporary — destroyed before use → empty/garbage output. StealthLib's `S("...")` returns a persistent object with lazy decrypt, no dangling pointers.
+### FetchContent or add_subdirectory
 
-See [`tests/differential/`](tests/differential/) for the full test harness.
+```cmake
+include(FetchContent)
+FetchContent_Declare(
+    stealthlib
+    GIT_REPOSITORY https://github.com/rolanfreeman6-png/stealthlib.git
+    GIT_TAG main # Pin this to a reviewed commit or release tag in production.
+)
+FetchContent_MakeAvailable(stealthlib)
+target_link_libraries(your_target PRIVATE stealthlib)
+```
 
----
+### Manual header copy
 
-## Competitive comparison
+Copy the entire `stealthlib/` directory, preserving its layout. Copying only
+`stealth.hpp` is not sufficient because it includes implementation headers
+from `detail/`, `encoding/`, `memory/`, `detection/`, `vmdetect/`, `pe/`, and
+`integrity/`.
 
-| Feature | xorstr | lazy_importer | skCrypter | **StealthLib** |
-|---------|:------:|:------------:|:---------:|:--------------:|
-| String obfuscation | ✓ | — | ✓ | ✓ **consteval** |
-| .rodata elision | depends on optimizer | — | depends on optimizer | ✓ **compiler-independent** |
-| Hash API resolution | — | ✓ | — | ✓ FNV-1a 64-bit |
-| Anti-debug (4 channels) | — | — | — | ✓ PEB+NtQuery+rdtsc+DR |
-| IAT hook detection | — | — | — | ✓ |
-| EAT forwarder detection | — | — | — | ✓ PE spec-correct |
-| Inline-hook detection | — | — | — | ✓ SHA-256 prologue |
-| VM detection | — | — | — | ✓ CPUID+DMI+disk |
-| SHA-256 (FIPS-180-4) | — | — | — | ✓ 4 KAT verified |
-| Per-build key rotation | — | — | — | ✓ 16 variants |
-| RAII auto re-encrypt | — | — | — | ✓ |
-| Empty string S("") | ✗ | — | ✗ | ✓ |
-| Wide string SW(L"") | ✗ | — | ✗ | ✓ |
-| Differential tested | — | — | — | ✓ vs xorstr 7/7 |
-| Threading contract | — | — | — | ✓ documented + TSan-proven |
-| Threat model | — | — | — | ✓ |
-| Coverage | — | — | — | ✓ 94.6% |
-| Mutation testing | — | — | — | ✓ 40 mutations 100% killed |
-| Fuzz testing | — | — | — | ✓ 4.5B executions |
-| Multi-platform CI | — | — | — | ✓ 5 platforms |
-| Zero dependencies | ✓ | ✓ | ✓ | ✓ |
-| Single header | ✓ | ✓ | ✓ | ✓ umbrella + 14 internal |
-| License | MIT | MIT | MIT | MIT |
+## Windows inspection contract
 
----
+- PE export functions operate on a loaded image or a synthetic flat image
+  buffer that spans its declared `SizeOfImage`; they do not accept an
+  arbitrary truncated file buffer.
+- `get_proc()` / `get_proc_by_hash()` follow `DLL.Function` and `DLL.#Ordinal`
+  forwarders up to eight hops and return `nullptr` on a malformed forwarder,
+  a cycle/depth limit, or an unloaded target module.
+- `compare_iat_thunk(importing_module, function)` requires a named import with
+  `OriginalFirstThunk` metadata. Its `hook_status` is `clean`, `hooked`,
+  `not_found`, or `unavailable`; `hooked == false` alone is not a clean result.
+- `detection::hardware_breakpoint_count()` returns `-1` for the current
+  running thread because Windows cannot provide its valid context through
+  `GetThreadContext`. Use `hardware_breakpoint_count_for_suspended_thread()`
+  for a real suspended-thread handle. Debug registers are per-thread.
 
-## Requirements
+## Threading contract
 
-- **C++20 compiler:** MSVC 19.29+, Clang 10+, GCC 10+
-- **Windows x64/x86** (primary target — PE parsing, PEB walk, anti-debug)
-- **Linux/macOS** compile the platform-independent surface (string encryption, hashes, SHA-256, encoding — for unit tests and portable code)
-- **CMake 3.20+** (auto-generates `STEALTH_BUILD_KEY` from git SHA + timestamp)
-- **Zero external dependencies** — only C++20 standard library + Windows SDK (on Windows)
+Each `S()`/`SW()` object is thread-confined. Concurrent access to the same
+object is a data race; use one instance per thread or external synchronization.
+See [docs/THREADING.md](docs/THREADING.md).
 
----
+## Security boundary
 
-## Limitations (honest)
+See [docs/SECURITY.md](docs/SECURITY.md) and
+[docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). The library is a hardening aid,
+not a DRM system, cryptographic vault, anti-debug guarantee, or VM escape
+detector.
 
-- **Not cryptography.** XOR obfuscation ≠ encryption. A motivated reverse engineer who locates `decrypt()` recovers all literals. Defeats casual `strings` RE, not a determined attacker.
-- **Not kernel-mode.** All checks run in user mode. Kernel rootkits see and patch anything below.
-- **Not anti-hypervisor.** Type-1 hypervisors can single-step without in-guest signals.
-- **Not ARM64.** `rdtsc`/`cpuid` return 0 on non-x86 arches (no false positives, but no detection either).
-- **Not thread-safe per instance.** Each `S("...")` instance must be thread-confined (Variant B). See `docs/THREADING.md`.
+## Version
 
-See [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for the full scope.
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE).
-
----
-
-<div align="center">
-
-**StealthLib v2.2.0** — built with precision, verified byte-by-byte.
-
-[Report bug](https://github.com/rolanfreeman6-png/stealthlib/issues) · [Request feature](https://github.com/rolanfreeman6-png/stealthlib/issues) · [Audit report](docs/AUDIT_REPORT.html) · [Thread model](docs/THREAT_MODEL.md)
-
-</div>
+StealthLib **2.2.1**.

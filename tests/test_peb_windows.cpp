@@ -67,7 +67,7 @@ TEST_CASE("get_dos / get_nt / get_export on real module") {
     CHECK(dos->e_magic == 0x5A4D);
     auto* nt = stealth::get_nt(base);
     REQUIRE(nt != nullptr);
-    CHECK(nt->Signature == 0x4550);
+    CHECK(nt->Signature == IMAGE_NT_SIGNATURE);
     auto* exp = stealth::get_export(base);
     REQUIRE(exp != nullptr);
     CHECK(exp->NumberOfFunctions > 0);
@@ -166,21 +166,22 @@ TEST_CASE("fixture: is_forwarder.dll parses forwarder entry") {
     auto* exp = stealth::get_export(base);
     REQUIRE(exp != nullptr);
     CHECK(exp->NumberOfNames >= 1);
-    // Forwarder strings are NOT lookup-able via get_proc (returns NULL is expected);
-    // we only assert the export directory was readable.
-    CHECK(true);
+    auto loader_result = reinterpret_cast<void*>(
+        GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetProcAddress"));
+    REQUIRE(loader_result != nullptr);
+    CHECK(stealth::get_proc(base, "A") == loader_result);
 }
 
 TEST_CASE("detection::scan returns coherent struct") {
     auto s = stealth::detection::scan();
     CHECK(s.build_key_match != 0);
-    CHECK((s.peb_debug_flag == true || s.peb_debug_flag == false));
-    CHECK(s.hwbp_count >= 0);
+    CHECK(s.hwbp_count == -1);
+    CHECK(s.hardware_breakpoints == (s.hwbp_count > 0));
 }
 
-TEST_CASE("detection::hardware_breakpoint_count not negative on x64") {
+TEST_CASE("detection::hardware_breakpoint_count reports current-thread context unavailable") {
     auto n = stealth::detection::hardware_breakpoint_count();
-    CHECK(n >= -1);
+    CHECK(n == -1);
 }
 
 TEST_CASE("rva_in_image rejects out-of-range RVAs") {
@@ -189,28 +190,32 @@ TEST_CASE("rva_in_image rejects out-of-range RVAs") {
     auto* nt = stealth::get_nt(base);
     REQUIRE(nt != nullptr);
     CHECK(stealth::rva_in_image(base, 0x1000) != 0);
-    CHECK(stealth::rva_in_image(base, nt->SizeOfImage - 4) != 0);
-    CHECK(stealth::rva_in_image(base, nt->SizeOfImage + 1) == 0);
+    CHECK(stealth::rva_in_image(base, nt->OptionalHeader.SizeOfImage - 4) != 0);
+    CHECK(stealth::rva_in_image(base, nt->OptionalHeader.SizeOfImage + 1) == 0);
     CHECK(stealth::rva_in_image(nullptr, 0) == 0);
 }
 
 TEST_CASE("RAII unlock: scope exit re-encrypts char") {
     auto s = S("Hello, World!");
     CHECK(std::strcmp(s.c_str(), "Hello, World!") == 0);
+    CHECK(s.impl.decrypted);
     {
         auto lock = s.unlock();
         CHECK(std::strcmp(lock.c_str(), "Hello, World!") == 0);
     }
+    CHECK_FALSE(s.impl.decrypted);
     CHECK(std::strcmp(s.c_str(), "Hello, World!") == 0);
 }
 
 TEST_CASE("RAII unlock: scope exit re-encrypts wide char") {
     auto s = SW(L"Wide Scope Test");
     CHECK(std::wcscmp(s.c_str(), L"Wide Scope Test") == 0);
+    CHECK(s.impl.decrypted);
     {
         auto lock = s.unlock();
         CHECK(std::wcscmp(lock.c_str(), L"Wide Scope Test") == 0);
     }
+    CHECK_FALSE(s.impl.decrypted);
     CHECK(std::wcscmp(s.c_str(), L"Wide Scope Test") == 0);
 }
 
@@ -264,6 +269,7 @@ TEST_CASE("non-windows: RAII unlock") {
         auto lock = s.unlock();
         CHECK(std::strcmp(lock.c_str(), "narrow") == 0);
     }
+    CHECK_FALSE(s.impl.decrypted);
     CHECK(std::strcmp(s.c_str(), "narrow") == 0);
 }
 

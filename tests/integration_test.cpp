@@ -9,7 +9,7 @@ int main() {
     std::cout << "[+] StealthLib Integration Test\n\n";
 
     std::cout << "[*] Testing version info...\n";
-    assert(std::strcmp(stealth::version(), "2.2.0") == 0);
+    assert(std::strcmp(stealth::version(), "2.2.1") == 0);
     std::cout << "[+] Version: " << stealth::version() << " - PASSED\n\n";
 
     std::cout << "[*] Testing string encryption integration...\n";
@@ -73,8 +73,8 @@ int main() {
     std::cout << "[+] XOR encode/decode - PASSED\n\n";
 
     std::cout << "[*] Testing debug detection...\n";
-    bool debugger_checked = stealth::detection::is_debugger_present() || !stealth::detection::is_debugger_present();
-    assert(debugger_checked);
+    (void)stealth::detection::is_debugger_present();
+    assert(stealth::detection::hardware_breakpoint_count() == -1);
     std::cout << "[+] Debugger detection - PASSED\n\n";
 
     std::cout << "[*] Testing hex encoding...\n";

@@ -39,7 +39,7 @@ void benchmark_string_encryption() {
     auto unlock_time = benchmark([]() {
         // SAFE pattern: bind the encrypted object to a named local whose
         // lifetime strictly contains the guard. The unsafe pattern
-        //   auto lock = S(...).unlock();
+        //   auto lock = temporary_S_object.unlock();
         // is unsound because the temporary from S(...) dies at end of
         // full expression, but the guard's destructor runs at end of
         // scope -> use-after-free.
@@ -47,7 +47,7 @@ void benchmark_string_encryption() {
         volatile auto lock = s.unlock();
         (void)lock;
     }, 1000);
-    std::cout << "[+] S().unlock() 100x (scoped): " << unlock_time << " ms/call\n";
+    std::cout << "[+] named S object unlock() 100x (scoped): " << unlock_time << " ms/call\n";
 }
 
 void benchmark_base64() {

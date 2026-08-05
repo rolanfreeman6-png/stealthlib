@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-test-release:
+    name: Build, test, and publish release
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Configure
+        shell: pwsh
+        run: >-
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DSTEALTH_BUILD_EXAMPLES=ON
+          -DSTEALTH_BUILD_TESTS=ON
+          -DSTEALTH_BUILD_BENCHMARK=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure --parallel 1
+
+      - name: Package source snapshot
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          git archive --format=zip --output "artifacts/stealthlib-${env:GITHUB_REF_NAME}.zip" HEAD
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create "${env:GITHUB_REF_NAME}" "artifacts/stealthlib-${env:GITHUB_REF_NAME}.zip" `
+            --repo "${env:GITHUB_REPOSITORY}" `
+            --title "StealthLib ${env:GITHUB_REF_NAME}" `
+            --notes "Release ${env:GITHUB_REF_NAME}: verified by the Release workflow build and CTest suite before publishing."

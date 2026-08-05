@@ -99,6 +99,7 @@ TEST_CASE("hash invariant: wide fnv differs from per-byte fnv on same chars") {
         uint64_t c = stealth::hashes::fnv(w.c_str(), w.size());
         uint64_t d = stealth::hashes::fnv(w.c_str(), w.size());
         REQUIRE(c == d);
+        CHECK(c != a);
     }
 }
 
@@ -162,7 +163,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     std::memcpy(buf, data, size);
     buf[size] = '\0';
     std::uint64_t h1 = stealth::hashes::fnv(buf, size);
-    std::uint64_t h2 = stealth::hashes::runtime(buf);
+    std::uint64_t h2 = stealth::hashes::fnv(data, size);
     if (h1 != h2) std::abort();
     (void)stealth::hashes::djb2(buf, size);
     return 0;

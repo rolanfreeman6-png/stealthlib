@@ -7,6 +7,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 namespace {
 

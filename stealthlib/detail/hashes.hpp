@@ -65,11 +65,27 @@ constexpr uint64_t mix(uint64_t v) noexcept {
     return v;
 }
 
-constexpr uint64_t derive_seed(size_t idx, uint64_t mix_k) noexcept {
+constexpr uint64_t source_file_hash(const char* file) noexcept {
+    uint64_t hash = fnv1a_basis;
+    for (size_t index = 0; file[index] != '\0'; ++index) {
+        hash ^= static_cast<uint64_t>(static_cast<uint8_t>(file[index]));
+        hash *= fnv1a_prime;
+    }
+    return hash;
+}
+
+constexpr uint64_t source_location_seed(
+    const char* file,
+    uint64_t line,
+    uint64_t counter) noexcept {
+    return mix(source_file_hash(file) ^ mix(line) ^ mix(counter));
+}
+
+constexpr uint64_t derive_seed(uint64_t idx, uint64_t mix_k) noexcept {
     return mix(idx * 0x9E3779B97F4A7C15ULL + mix_k + STEALTH_BUILD_KEY);
 }
 
-constexpr uint8_t derive_byte(size_t idx, size_t pos, uint64_t mix_k) noexcept {
+constexpr uint8_t derive_byte(uint64_t idx, size_t pos, uint64_t mix_k) noexcept {
     return static_cast<uint8_t>((derive_seed(idx, mix_k) >> (pos * 8)) & 0xFFu);
 }
 

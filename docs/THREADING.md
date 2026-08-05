@@ -4,8 +4,8 @@
 (produced by the `S("...")` / `SW(L"...")` macros) and the
 `detail::encrypted_string_impl` / `encrypted_wstring_impl` they wrap.
 
-**Version:** v2.2.0 (introduced with the I-5 fix; supersedes the implicit
-and incorrect "atomic flag = thread-safe" claim of v2.2.0).
+**Version:** v2.2.1. This document defines the supported thread-confinement
+contract for encrypted literal instances.
 
 ---
 
@@ -52,9 +52,8 @@ std::thread b([&]{ for (...) { auto g = shared.unlock(); } }); // UB
 ```
 
 If you must share one logical secret across threads, give **each thread
-its own instance** (re-invoke the macro in each thread) — the ciphertext
-is constant-initialised and identical across instances, so this is cheap
-and race-free.
+its own instance** by invoking the macro in that thread. The objects are
+independent and race-free under this contract.
 
 ---
 
@@ -79,13 +78,9 @@ ctor, and the existing `S()/SW()/unlock()` API. Its cost is a documented
 threads. This is the same model used by comparable compile-time string
 obfuscators (e.g. xorstr), whose instances are also short-lived locals.
 
-The v2.2.0 code used GCC/Clang `__atomic_*` builtins on the `decrypted`
-flag. That was **incorrect**: it fenced only the flag, not `buffer[]` /
-`encrypted[]`, so it gave a false impression of thread safety while the
-real races (concurrent `buffer[]` writes, decrypt-vs-reencrypt on
-`encrypted[]`) remained. Variant B makes the non-guarantee explicit and
-removes the non-portable builtins (which also blocked MSVC — see
-AUDIT_v2.2.0 C-5).
+Making only the `decrypted` flag atomic would not make the buffers safe:
+concurrent writers still race on `buffer[]` and `encrypted[]`. Variant B
+therefore documents the actual invariant instead of implying thread safety.
 
 ---
 
@@ -125,10 +120,7 @@ buffers**, and share no mutable state.
 
 - **Default (ctest / CI):** every thread owns its own `S(...)` instance
   plus a start-gun (`std::atomic<int> ready`) barrier for tight
-  interleaving. There is no shared mutable state between threads, so
-  ThreadSanitizer reports **zero** races. This is the harness run by the
-  `linux-tsan` CI job (quickverify.sh runs ASan+UBSan, not TSan); it must
-  stay race-free indefinitely.
+  interleaving. There is no shared mutable state between threads.
 
 - **Adversarial probe (`-DSTEALTH_ADVERSARIAL_RACE_PROBE`):** an opt-in
   (compiled out by default) block shares one instance across two threads

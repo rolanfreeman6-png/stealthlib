@@ -9,6 +9,7 @@
 #include <optional>
 #include <vector>
 #include <array>
+#include <stdexcept>
 
 namespace stealth::encoding {
 
@@ -17,16 +18,16 @@ static const char b64_alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqr
 inline char encode_b64_byte(unsigned char v) noexcept { return b64_alphabet[v & 0x3F]; }
 }
 
-inline std::string base64_encode(const void* data, size_t len) noexcept;
-inline std::string base64_encode(const std::string_view& str) noexcept {
+inline std::string base64_encode(const void* data, size_t len);
+inline std::string base64_encode(const std::string_view& str) {
     return base64_encode(str.data(), str.size());
 }
-inline std::optional<std::string> base64_decode(const std::string_view& str) noexcept;
-inline std::string hex_encode(const void* data, size_t len) noexcept;
-inline std::string hex_encode(const std::string_view& str) noexcept {
+inline std::optional<std::string> base64_decode(const std::string_view& str);
+inline std::string hex_encode(const void* data, size_t len);
+inline std::string hex_encode(const std::string_view& str) {
     return hex_encode(str.data(), str.size());
 }
-inline std::optional<std::vector<uint8_t>> hex_decode(const std::string_view& str) noexcept;
+inline std::optional<std::vector<uint8_t>> hex_decode(const std::string_view& str);
 
 inline void rot13_encode(void* dst, const void* src, size_t len) noexcept {
     if (!dst || !src) return;
@@ -51,13 +52,14 @@ struct xor_key {
 
     xor_key() noexcept = default;
 
-    xor_key(const uint8_t* k, size_t len) noexcept : length(len < KeySize ? len : KeySize) {
+    xor_key(const uint8_t* k, size_t len) noexcept : length(k ? (len < KeySize ? len : KeySize) : 0) {
         for (size_t i = 0; i < length; ++i) data[i] = k[i];
     }
 
     constexpr xor_key(const char* str) noexcept : length(0) {
         size_t i = 0;
-        while (str[i] && i < KeySize) {
+        if (!str) return;
+        while (i < KeySize && str[i]) {
             data[i] = static_cast<uint8_t>(str[i]);
             ++length;
             ++i;
@@ -87,13 +89,18 @@ inline void xor_decode(void* data, size_t len, const xor_key<KeySize>& key) noex
     xor_crypt(data, len, key);
 }
 
-inline std::string base64_encode(const void* data, size_t len) noexcept {
+inline std::string base64_encode(const void* data, size_t len) {
     if (!data) return {};
     const unsigned char* src = static_cast<const unsigned char*>(data);
     std::string result;
-    result.reserve((len + 2) / 3 * 4);
+    const size_t groups = len / 3;
+    const size_t remainder = len % 3;
+    if (groups > result.max_size() / 4 || (remainder != 0 && groups == result.max_size() / 4)) {
+        throw std::length_error("base64 output is too large");
+    }
+    result.reserve(groups * 4 + (remainder != 0 ? 4 : 0));
     size_t i = 0;
-    while (i + 2 < len) {
+    while (len - i >= 3) {
         unsigned int v = (static_cast<unsigned int>(src[i]) << 16) |
                         (static_cast<unsigned int>(src[i + 1]) << 8) |
                         static_cast<unsigned int>(src[i + 2]);
@@ -103,14 +110,14 @@ inline std::string base64_encode(const void* data, size_t len) noexcept {
         result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v));
         i += 3;
     }
-    if (i + 1 < len) {
+    if (len - i == 2) {
         unsigned int v = (static_cast<unsigned int>(src[i]) << 16) |
                         (static_cast<unsigned int>(src[i + 1]) << 8);
         result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 18));
         result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 12));
         result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 6));
         result += '=';
-    } else if (i < len) {
+    } else if (len - i == 1) {
         unsigned int v = static_cast<unsigned int>(src[i]) << 16;
         result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 18));
         result += detail_base64::encode_b64_byte(static_cast<unsigned char>(v >> 12));
@@ -119,7 +126,7 @@ inline std::string base64_encode(const void* data, size_t len) noexcept {
     return result;
 }
 
-inline std::optional<std::string> base64_decode(const std::string_view& str) noexcept {
+inline std::optional<std::string> base64_decode(const std::string_view& str) {
     if (str.size() % 4 != 0) return std::nullopt;
     static const int8_t b64_decode[256] = {
         -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
@@ -141,7 +148,7 @@ inline std::optional<std::string> base64_decode(const std::string_view& str) noe
     };
 
     std::string result;
-    result.reserve(str.size() * 3 / 4);
+    result.reserve((str.size() / 4) * 3);
     const char* s = str.data();
     size_t len_str = str.size();
     bool ended = false;
@@ -161,6 +168,13 @@ inline std::optional<std::string> base64_decode(const std::string_view& str) noe
         bool pad3 = (s[i + 3] == '=');
         if (pad2 && !pad3) return std::nullopt;
         if (ended) return std::nullopt;
+        if (pad2) {
+            if ((vals[1] & 0x0F) != 0) return std::nullopt;
+        } else if (pad3) {
+            if (vals[2] < 0 || (vals[2] & 0x03) != 0) return std::nullopt;
+        } else if (vals[2] < 0 || vals[3] < 0) {
+            return std::nullopt;
+        }
         result += static_cast<char>((vals[0] << 2) | (vals[1] >> 4));
         if (!pad2) result += static_cast<char>((vals[1] << 4) | (vals[2] >> 2));
         if (!pad3) result += static_cast<char>((vals[2] << 6) | vals[3]);
@@ -169,10 +183,14 @@ inline std::optional<std::string> base64_decode(const std::string_view& str) noe
     return result;
 }
 
-inline std::string hex_encode(const void* data, size_t len) noexcept {
+inline std::string hex_encode(const void* data, size_t len) {
     if (!data) return {};
     static const char hex_chars[] = "0123456789ABCDEF";
     const unsigned char* src = static_cast<const unsigned char*>(data);
+    std::string probe;
+    if (len > probe.max_size() / 2) {
+        throw std::length_error("hex output is too large");
+    }
     std::string result(len * 2, '\0');
     for (size_t i = 0; i < len; ++i) {
         result[i * 2] = hex_chars[src[i] >> 4];
@@ -181,7 +199,7 @@ inline std::string hex_encode(const void* data, size_t len) noexcept {
     return result;
 }
 
-inline std::optional<std::vector<uint8_t>> hex_decode(const std::string_view& str) noexcept {
+inline std::optional<std::vector<uint8_t>> hex_decode(const std::string_view& str) {
     if (str.size() % 2 != 0) return std::nullopt;
     std::vector<uint8_t> result(str.size() / 2);
     const char* s = str.data();

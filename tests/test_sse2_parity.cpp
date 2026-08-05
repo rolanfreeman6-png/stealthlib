@@ -1,20 +1,15 @@
 // tests/test_sse2_parity.cpp
 // ---------------------------------------------------------------------
-// Tier 2E parity test. Decrypts the same long encrypted literal twice
-// from fresh state -- once through the SSE2 fast path (if compiled
-// with -DSTEALTHLIB_SSE2_DECRYPT=1) and once through the scalar path
-// (forced by #defining the macro to 0 locally in a second TU).
-//
-// This test is split into two source files to compile the same string
-// with both modes. We cannot toggle the macro per-call within one TU
-// because the constexpr-decision branches on STEALTHLIB_SSE2_DECRYPT
-// at compile time.
+// Tier 2E parity test. This TU uses the target's configured decrypt path;
+// test_sse2_scalar_ref.cpp forces the scalar path in a second TU.
 // ---------------------------------------------------------------------
 #include "stealthlib/stealth.hpp"
 
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+
+extern "C" const char* stealthlib_sse2_scalar_reference();
 
 // 64-byte literal -- above the SSE2 threshold (N >= 32).
 // Includes printable ASCII, punctuation, digits, a few hex bytes that
@@ -39,6 +34,11 @@ int main() {
             "[test-sse2-parity] first-decrypt MISMATCH (out_len=%zu)\n", std::strlen(out));
         return 1;
     }
+    const char* scalar = stealthlib_sse2_scalar_reference();
+    if (std::strcmp(scalar, expect) != 0 || std::strcmp(scalar, out) != 0) {
+        std::fprintf(stderr, "[test-sse2-parity] scalar/SSE2 parity MISMATCH\n");
+        return 1;
+    }
 
     // Second decryption -- idempotent: the flag is set, so it short-
     // circuits. This proves the buffer state survives round-trips
@@ -58,7 +58,11 @@ int main() {
     // a 33-byte literal (just past SSE2 threshold).
     auto li_short = S("STEALTHLIB_16_BYTE"); // 17 bytes
     auto li_edge  = S("STEALTHLIB_33_BYTE_LITERAL_AAAAAAAAAAAAAAAAAAA"); // 41 bytes
-    (void)li_short; (void)li_edge;
+    if (std::strcmp(li_short.c_str(), "STEALTHLIB_16_BYTE") != 0 ||
+        std::strcmp(li_edge.c_str(), "STEALTHLIB_33_BYTE_LITERAL_AAAAAAAAAAAAAAAAAAA") != 0) {
+        std::fprintf(stderr, "[test-sse2-parity] scalar/edge literal MISMATCH\n");
+        return 1;
+    }
 
     std::fprintf(stderr, "[test-sse2-parity] ALL CHECKS PASSED (N=77)\n");
     return 0;

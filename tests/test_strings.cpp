@@ -4,7 +4,9 @@
 #include "stealthlib/stealth.hpp"
 
 #include <cstring>
+#include <cwchar>
 #include <string>
+#include <vector>
 
 TEST_CASE("string encryption: basic compile-time decryption") {
     auto s = S("Hello, World!");
@@ -53,6 +55,7 @@ TEST_CASE("string encryption: distinct Idx produces distinct ciphertext") {
     auto a = S("SameTextA");
     auto b = S("SameTextA");   // different __COUNTER__ value -> different Idx
     CHECK(std::strcmp(a.c_str(), b.c_str()) == 0);
+    CHECK(std::memcmp(a.impl.encrypted, b.impl.encrypted, a.size()) != 0);
     auto c = S("SameTextB");
     CHECK(std::strcmp(a.c_str(), c.c_str()) != 0);
 }
@@ -92,6 +95,8 @@ TEST_CASE("encoding::base64 rejects invalid input") {
     CHECK(!bad1.has_value());
     auto bad2 = stealth::encoding::base64_decode("AAA");
     CHECK(!bad2.has_value());
+    CHECK(!stealth::encoding::base64_decode("AB==").has_value());
+    CHECK(!stealth::encoding::base64_decode("AAB=").has_value());
 }
 
 TEST_CASE("encoding::hex round-trip") {

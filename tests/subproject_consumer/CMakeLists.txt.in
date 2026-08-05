@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.20)
+project(StealthLibSubprojectConsumer LANGUAGES CXX)
+
+set(STEALTH_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(STEALTH_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(STEALTH_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+set(STEALTH_BUILD_FIXTURES OFF CACHE BOOL "" FORCE)
+include(FetchContent)
+FetchContent_Declare(stealthlib SOURCE_DIR "@STEALTHLIB_ROOT_DIR@")
+FetchContent_MakeAvailable(stealthlib)
+
+add_executable(stealthlib_subproject_consumer main.cpp)
+target_link_libraries(stealthlib_subproject_consumer PRIVATE stealthlib)

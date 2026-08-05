@@ -6,8 +6,11 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #if defined(_MSC_VER)
 #include <intrin.h>
+#elif (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__))
+#include <cpuid.h>
 #endif
 #ifdef _WIN32
 #include <windows.h>
@@ -17,6 +20,29 @@
 
 namespace stealth::detection::vmdetect {
 
+inline char ascii_lower(char value) noexcept {
+    return value >= 'A' && value <= 'Z' ? static_cast<char>(value + ('a' - 'A')) : value;
+}
+
+inline bool contains_vm_vendor_token(const char* value) noexcept {
+    if (!value) return false;
+    static constexpr const char* patterns[] = {
+        "vmware", "virtualbox", "qemu", "innotek", "xen", "hyper-v", "microsoft corporation"
+    };
+    for (const char* pattern : patterns) {
+        for (const char* candidate = value; *candidate; ++candidate) {
+            const char* left = candidate;
+            const char* right = pattern;
+            while (*left && *right && ascii_lower(*left) == *right) {
+                ++left;
+                ++right;
+            }
+            if (*right == '\0') return true;
+        }
+    }
+    return false;
+}
+
 inline bool cpuid_hypervisor_present() noexcept {
 #if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
     uint32_t a = 0, b = 0, c = 0, d = 0;
@@ -25,8 +51,10 @@ inline bool cpuid_hypervisor_present() noexcept {
     int regs[4]; __cpuid(regs, static_cast<int>(leaf));
     a = static_cast<uint32_t>(regs[0]); b = static_cast<uint32_t>(regs[1]);
     c = static_cast<uint32_t>(regs[2]); d = static_cast<uint32_t>(regs[3]);
+#elif defined(__GNUC__) || defined(__clang__)
+    if (!__get_cpuid(leaf, &a, &b, &c, &d)) return false;
 #else
-    asm volatile("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(leaf) : "cc");
+    return false;
 #endif
     (void)a; (void)b; (void)d;
     return (c & (1u << 31)) != 0;
@@ -40,58 +68,35 @@ inline bool registry_or_dmi_vm_vendor() noexcept {
     HKEY key{};
     LONG rc = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\BIOS", 0, KEY_READ, &key);
     if (rc != ERROR_SUCCESS) return false;
-    auto contains_vm_token = [](char const* s) -> bool {
-        if (!s) return false;
-        static constexpr const char* patterns[] = { "VMware", "VirtualBox", "QEMU", "innotek", "Xen", "Hyper-V", "Microsoft Corporation" };
-        for (auto p : patterns) {
-            for (char const* q = s; *q; ++q) {
-                if ((*q | 32) == p[0]) {
-                    char const* r = q + 1; char const* s2 = p + 1;
-                    while (*r && *s2 && (*r | 32) == *s2) { ++r; ++s2; }
-                    if (!*s2) return true;
-                }
-            }
-        }
-        return false;
-    };
-    char buf[256] = {}; DWORD sz = sizeof(buf); bool hit = false;
+    char buf[256] = {};
+    DWORD sz = 0;
+    bool hit = false;
     for (char const* valname : { "SystemManufacturer", "SystemProductName", "BIOSVendor" }) {
-        sz = sizeof(buf);
-        if (RegQueryValueExA(key, valname, nullptr, nullptr, reinterpret_cast<LPBYTE>(buf), &sz) == ERROR_SUCCESS) {
-            if (contains_vm_token(buf)) { hit = true; break; }
-        }
+        DWORD type = 0;
+        sz = sizeof(buf) - 1;
         std::memset(buf, 0, sizeof(buf));
+        if (RegQueryValueExA(key, valname, nullptr, &type, reinterpret_cast<LPBYTE>(buf), &sz) == ERROR_SUCCESS &&
+            (type == REG_SZ || type == REG_EXPAND_SZ)) {
+            buf[sz < sizeof(buf) ? sz : sizeof(buf) - 1] = '\0';
+            if (contains_vm_vendor_token(buf)) { hit = true; break; }
+        }
     }
     RegCloseKey(key);
     return hit;
 #else
     auto read_first_line = [](char const* path, char* out, std::size_t cap) -> bool {
-        if (!path || path[0] != '/' || std::strstr(path, "..") != nullptr) return false;
+        if (!path || !out || cap < 2 || path[0] != '/' || std::strstr(path, "..") != nullptr) return false;
         std::FILE* f = std::fopen(path, "r");
         if (!f) return false;
         if (!std::fgets(out, static_cast<int>(cap), f)) { std::fclose(f); return false; }
         std::fclose(f); return true;
     };
-    auto contains_vm_token = [](char const* s) -> bool {
-        if (!s) return false;
-        static constexpr const char* strong[] = { "VMware", "VirtualBox", "QEMU", "innotek", "Xen", "Hyper-V" };
-        auto contains = [](char const* haystack, const char* p) -> bool {
-            for (char const* q = haystack; *q; ++q) {
-                if ((*q | 32) == p[0]) {
-                    char const* r = q + 1; char const* s2 = p + 1;
-                    while (*r && *s2 && (*r | 32) == *s2) { ++r; ++s2; }
-                    if (!*s2) return true;
-                }
-            }
-            return false;
-        };
-        for (auto p : strong) if (contains(s, p)) return true;
-        return false;
-    };
     char buf[256] = {};
-    if (read_first_line("/sys/class/dmi/id/sys_vendor", buf, sizeof(buf))) { if (contains_vm_token(buf)) return true; }
+    if (read_first_line("/sys/class/dmi/id/sys_vendor", buf, sizeof(buf)) && contains_vm_vendor_token(buf)) return true;
     std::memset(buf, 0, sizeof(buf));
-    if (read_first_line("/sys/class/dmi/id/product_name", buf, sizeof(buf)) || read_first_line("/sys/class/dmi/id/bios_vendor", buf, sizeof(buf))) { if (contains_vm_token(buf)) return true; }
+    if (read_first_line("/sys/class/dmi/id/product_name", buf, sizeof(buf)) && contains_vm_vendor_token(buf)) return true;
+    std::memset(buf, 0, sizeof(buf));
+    if (read_first_line("/sys/class/dmi/id/bios_vendor", buf, sizeof(buf)) && contains_vm_vendor_token(buf)) return true;
     return false;
 #endif
 }

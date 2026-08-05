@@ -4,7 +4,7 @@
 # One-command reproducibility verifier for StealthLib.
 #
 # Runs (in order):
-#   A. Release smoke               -- full ctest on Linux gcc (Release, -O2)
+#   A. Release smoke               -- full ctest on Linux gcc (Release build type)
 #   B. Strict-warnings build       -- -Werror -Wall -Wextra -Wpedantic -Wshadow -Wconversion
 #   C. ASan + UBSan debug          -- Debug build with sanitizers (gcc)
 #   D. Build determinism           -- two builds with the same STEALTH_BUILD_KEY
@@ -16,7 +16,7 @@
 #   H. clang-tidy                  -- static analysis (if clang-tidy available)
 #   I. cppcheck                    -- static analysis (if cppcheck available)
 #
-# Linux-only phases skip cleanly on macOS/Windows. Any real failure exits non-zero.
+# Linux-only phases skip cleanly on macOS/Windows. Any required failure exits non-zero.
 # Override with environment:
 #   QV_SKIP=A,B   ...skip phase letters (e.g. QV_SKIP=C,F,G)
 #   QV_JOBS=N     ...parallel build jobs (default: nproc)
@@ -107,7 +107,7 @@ phase_A() {
         record "A" ok
     else
         bad "ctest (Release) failed"
-        sed 's/^/       /' "$bd/.ctest_err" || true
+        sed 's/^/       /' "$bd/.ctest_err"
         record "A" fail
         return 1
     fi
@@ -158,7 +158,7 @@ phase_C() {
         record "C" ok
     else
         bad "ASan + UBSan ctest reported findings"
-        sed 's/^/       /' "$bd/.ctest_err" || true
+        sed 's/^/       /' "$bd/.ctest_err"
         record "C" fail
         return 1
     fi
@@ -210,9 +210,8 @@ phase_D() {
         record "D" ok
     else
         bad "non-deterministic build (string_test differs for same STEALTH_BUILD_KEY)"
-        note "this is known-fragile across toolchains due to .note sections / timestamps"
-        record "D" warn
-        return 0
+        record "D" fail
+        return 1
     fi
 }
 
@@ -236,7 +235,7 @@ phase_E() {
         record "E" ok
     else
         bad "doctest_sha256_test failed"
-        sed 's/^/       /' "$bd/.kat_err" || true
+        sed 's/^/       /' "$bd/.kat_err"
         record "E" fail
         return 1
     fi
@@ -271,7 +270,7 @@ phase_F() {
         record "F" ok
     else
         bad "fuzz corpus driver reported failures"
-        sed 's/^/       /' "$bd/.fuzz_run_err" || true
+        sed 's/^/       /' "$bd/.fuzz_run_err"
         record "F" fail
         return 1
     fi
@@ -285,6 +284,13 @@ phase_F() {
 # ============================================================
 phase_G() {
     if is_skipped G; then skip "Phase G: SSE2 parity"; record "G" skip; return 0; fi
+    if [[ "$UNAME_S" != "Linux" ]]; then
+        skip "Phase G: SSE2 parity (non-Linux: $UNAME_S)"; record "G" skip; return 0
+    fi
+    case "$(uname -m)" in
+        x86_64|i386|i686) ;;
+        *) skip "Phase G: SSE2 parity (non-x86 arch: $(uname -m))"; record "G" skip; return 0 ;;
+    esac
     banner "Phase G: SSE2 _mm_xor_si128 parity"
     require_tool g++ || { record "G" fail; return 1; }
 
@@ -338,14 +344,13 @@ phase_H() {
         -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF \
         || { record "H" fail; return 1; }
 
-    local warnings
-    warnings="$($tidy -p "$bd" "$REPO_ROOT/examples/game_protection.cpp" 2>&1 | grep -c 'warning:' || echo 0)"
-    if [[ "$warnings" -gt 100 ]]; then
-        warn "clang-tidy: $warnings warnings (>100, review .clang-tidy config)"
-        record "H" warn
-    else
-        ok "clang-tidy: $warnings warnings (≤100, acceptable)"
+    if "$tidy" -p "$bd" --warnings-as-errors='*' "$REPO_ROOT/examples/game_protection.cpp"; then
+        ok "clang-tidy completed without warnings"
         record "H" ok
+    else
+        bad "clang-tidy reported findings"
+        record "H" fail
+        return 1
     fi
 }
 
@@ -357,37 +362,27 @@ phase_I() {
     banner "Phase I: cppcheck static analysis"
     require_tool cppcheck || { skip "Phase I: cppcheck not found"; record "I" skip; return 0; }
 
-    local errors
-    errors="$(cppcheck --enable=all --inline-suppr \
-        --suppress=missingIncludeSystem --suppress=unusedFunction \
-        -I "$REPO_ROOT/stealthlib" --std=c++20 \
-        "$REPO_ROOT/stealthlib/" "$REPO_ROOT/tests/" "$REPO_ROOT/examples/" \
-        2>&1 | grep -cE '^\(error\)' || echo 0)"
-    if [[ "$errors" -gt 0 ]]; then
-        bad "cppcheck: $errors errors found"
-        cppcheck --enable=all --inline-suppr \
-            --suppress=missingIncludeSystem --suppress=unusedFunction \
+    if ! cppcheck --enable=warning,style,performance,portability --error-exitcode=1 \
+            --inline-suppr --suppress=missingIncludeSystem --suppress=unusedFunction \
             -I "$REPO_ROOT/stealthlib" --std=c++20 \
-            "$REPO_ROOT/stealthlib/" "$REPO_ROOT/tests/" "$REPO_ROOT/examples/" \
-            2>&1 | grep '^\(error\)' | sed 's/^/       /'
+            "$REPO_ROOT/stealthlib/" "$REPO_ROOT/tests/" "$REPO_ROOT/examples/"; then
+        bad "cppcheck reported findings"
         record "I" fail
         return 1
     fi
-    ok "cppcheck: 0 errors"
+    ok "cppcheck completed without findings"
     record "I" ok
 }
 
 finalize() {
     banner "Summary"
-    local any_fail=0 any_warn=0
+    local any_fail=0
     for r in "${RESULTS[@]}"; do
         local phase="${r%%:*}"
         local status="${r##*:}"
         case "$status" in
             ok)    printf '  %s[ ok ]%s Phase %s\n'    "$c_green"  "$c_reset" "$phase" ;;
             skip)  printf '  %s[skip]%s Phase %s\n'    "$c_yellow" "$c_reset" "$phase" ;;
-            warn)  printf '  %s[warn]%s Phase %s\n'    "$c_yellow" "$c_reset" "$phase"
-                   any_warn=1 ;;
             fail)  printf '  %s[fail]%s Phase %s\n'    "$c_red"    "$c_reset" "$phase"
                    any_fail=1 ;;
         esac
@@ -397,20 +392,17 @@ finalize() {
         exit 0
     else
         bad "one or more phases failed"
-        if [[ $any_warn -ne 0 ]]; then
-            note "Phase D 'warn' = non-determinism (likely .note section/toolchain variation)"
-        fi
         exit 1
     fi
 }
 
-phase_A || true
-phase_B || true
-phase_C || true
-phase_D || true
-phase_E || true
-phase_F || true
-phase_G || true
-phase_H || true
-phase_I || true
+phase_A || :
+phase_B || :
+phase_C || :
+phase_D || :
+phase_E || :
+phase_F || :
+phase_G || :
+phase_H || :
+phase_I || :
 finalize

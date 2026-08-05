@@ -1,5 +1,9 @@
 # AUDIT_v2.1.3_RESPONSE — StealthLib Phase 1 Remediation
 
+> Historical record only. It describes the v2.1.x revision cited below and
+> is superseded for current behavior by the v2.2.1 documentation and tests.
+> Do not treat its historical verification claims as current-release results.
+
 **Date:** 2026-06-26
 **Responds to:** `AUDIT_v2.1.2.md` (22 findings: 7 critical, 5 important, 10 minor)
 **Head commit at audit:** 8d991b6 (v2.1.2)
@@ -20,7 +24,7 @@
 | **C-4** | critical | ✓ FIXED | `prologue_sha256`: guarded the cross-platform second definition with `#ifndef _WIN32` (Windows uses the one inside `#ifdef _WIN32`). | dbc37b2 |
 | **C-5** | critical | ✓ FIXED | Removed all `__atomic_*` builtins; `decrypted` is now a plain `bool`. Fixes MSVC compile **and** the false thread-safety claim (see I-5). `#if defined(_MSC_VER) #include <intrin.h>` added. | dbc37b2 |
 | **C-6** | critical | ✓ FIXED | `rdtsc()`: MSVC `__rdtsc()` via `<intrin.h>`; GCC/Clang inline-asm fallback; non-x86 returns 0. Fixes both the x64 GCC-asm-under-`_M_X64` and the x86 no-return bugs. | dbc37b2 |
-| **C-7** | critical | ✓ FIXED | `unlocked_wstring_guard`: added the `(const wchar_t*, size_t, std::nullptr_t)` ctor so `SW(L"").unlock()` compiles. | dbc37b2 |
+| **C-7** | critical | ✓ FIXED | `unlocked_wstring_guard`: added the `(const wchar_t*, size_t, std::nullptr_t)` ctor for empty wide-literal guard support in the historical API. | dbc37b2 |
 | **I-1** | important | ✓ FIXED | `is_eat_forwarded`: replaced `0x78 + 0x78 = 0xF0` with magic-based `dd_off` (PE32+ 0x88 / PE32 0x78) + null-check on `get_nt`. | dbc37b2 |
 | **I-2** | important | ✓ FIXED | `compare_iat_thunk`: read the full `uintptr_t` thunk; added `IMAGE_ORDINAL_FLAG` guard (skip ordinal imports); 8-byte read on PE32+. | dbc37b2 |
 | **I-3** | important | ✓ FIXED | `regression_test.cpp`: rewrote `test_decode_rejects_*` for the current non-templated `optional` API; hardened `base64_decode` padding validation so the rejection assertions are real (not theatrical). | e920e02 |
@@ -120,4 +124,5 @@ reached them. All fixed and covered by the now-green Windows ctest.
   fragile under multi-config generators and parallel builds.
 - **Commits pushed**: 4 phase-1 commits on `main` (dbc37b2, e920e02,
   a587e7f, 7c30747). A second round of audit-driven fixes (examples,
-  CI, docs drift) is in this commit. v2.2.0 tag is a Phase 3 deliverable.
+  CI, docs drift) is in that historical commit. Later tags have their own
+  release-specific verification.

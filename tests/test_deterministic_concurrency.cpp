@@ -16,6 +16,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
 #include <thread>
 #include <vector>
 #include <array>
@@ -33,6 +34,7 @@ int main() {
 
     for (int run = 0; run < RUNS; ++run) {
         std::atomic<int> ready{0};
+        std::atomic<int> waiting{0};
         std::atomic<int> errors{0};
         std::vector<std::thread> threads;
         threads.reserve(THREADS);
@@ -44,6 +46,7 @@ int main() {
                 auto wlit = SW(L"STEALTHLIB_WIDE_DETERMINISTIC_TEST");
 
                 // Start-gun: all threads wait until ready
+                waiting.fetch_add(1, std::memory_order_release);
                 while (ready.load(std::memory_order_acquire) == 0) {
                     // spin
                 }
@@ -73,6 +76,7 @@ int main() {
         }
 
         // Fire start-gun
+        while (waiting.load(std::memory_order_acquire) != THREADS) {}
         ready.store(1, std::memory_order_release);
 
         for (auto& th : threads) th.join();

@@ -1,7 +1,9 @@
 #include "stealthlib/stealth.hpp"
 #include <cassert>
+#include <array>
 #include <cstring>
 #include <cstdint>
+#include <cwchar>
 #include <iostream>
 
 int main() {

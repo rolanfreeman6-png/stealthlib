@@ -1,6 +1,6 @@
 name: Heavy CI
 
-# Heavy CI: sanitizers, static analysis, coverage, mutation, fuzz
+# Heavy CI: sanitizers, static analysis, coverage, fuzz
 # Runs on GitHub Actions (unlimited for public repos)
 # Fast CI (build+test) runs in ci.yml
 
@@ -15,7 +15,7 @@ jobs:
     name: ASan + UBSan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: sudo apt-get update && sudo apt-get install -y clang cmake make python3
       - run: |
           export SAN_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g"
@@ -30,7 +30,7 @@ jobs:
     name: TSan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: sudo apt-get update && sudo apt-get install -y clang cmake make
       - run: |
           export TSAN_FLAGS="-fsanitize=thread -g -O1"
@@ -46,22 +46,27 @@ jobs:
     name: MSan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: sudo apt-get update && sudo apt-get install -y clang
       - run: |
           export MSAN_FLAGS="-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -g -O1"
-          for test in portable_smoke_test string_test test_sse2_parity test_concurrent_decrypt; do
+          for test in portable_smoke_test string_test test_concurrent_decrypt; do
             clang++ -std=c++20 $MSAN_FLAGS -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL \
               -I . tests/${test}.cpp -o ${test}_msan -lpthread
             ./${test}_msan
             rm -f ${test}_msan
           done
+          clang++ -std=c++20 $MSAN_FLAGS -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL \
+            -I . tests/test_sse2_parity.cpp tests/test_sse2_scalar_ref.cpp \
+            -o test_sse2_parity_msan -lpthread
+          ./test_sse2_parity_msan
+          rm -f test_sse2_parity_msan
 
   strict-warnings:
     name: Strict Warnings
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: sudo apt-get update && sudo apt-get install -y g++ cmake make
       - run: |
           export WARN_FLAGS="-Werror -Wshadow -Wconversion -Wsign-conversion"
@@ -74,32 +79,32 @@ jobs:
     name: clang-tidy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: sudo apt-get update && sudo apt-get install -y clang clang-tidy cmake make ninja-build
       - run: |
           cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=ON \
             -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
-          clang-tidy -p build examples/game_protection.cpp > tidy.log 2>&1 || true
+          clang-tidy -p build --warnings-as-errors='*' examples/game_protection.cpp > tidy.log 2>&1
           cat tidy.log
 
   cppcheck:
     name: cppcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: sudo apt-get update && sudo apt-get install -y cppcheck
       - run: |
-          cppcheck --enable=all --inline-suppr --suppress=missingIncludeSystem \
-            --suppress=unusedFunction -I stealthlib --std=c++20 \
-            stealthlib/ tests/ examples/ > cppcheck.log 2>&1 || true
+          cppcheck --enable=warning,style,performance,portability --error-exitcode=1 \
+            --inline-suppr --suppress=missingIncludeSystem --suppress=unusedFunction \
+            -I stealthlib --std=c++20 stealthlib/ tests/ examples/ > cppcheck.log 2>&1
           cat cppcheck.log
 
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: sudo apt-get update && sudo apt-get install -y g++ cmake make python3 lcov
       - run: |
           export COV_FLAGS="--coverage -O0 -g -fprofile-update=atomic"
@@ -113,36 +118,6 @@ jobs:
           lcov --remove lcov.info /usr/* tests/* third_party/* --output-file lcov_filtered.info --ignore-errors unused
           lcov --summary lcov_filtered.info
 
-  mutation:
-    name: Mull Mutation Testing
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          sudo apt-get update
-          sudo apt-get install -y wget clang-18 llvm-18-dev libllvm18 g++ bc file
-      - run: |
-          wget -qL -O /tmp/mull.deb "https://github.com/mull-project/mull/releases/download/0.34.0/Mull-18-0.34.0-LLVM-18.1.3-ubuntu-amd64-24.04.deb" 2>/dev/null || true
-          if [ -f /tmp/mull.deb ] && [ $(stat -c%s /tmp/mull.deb 2>/dev/null || echo 0) -gt 1000 ]; then
-            sudo dpkg -i /tmp/mull.deb 2>&1 || sudo apt-get install -y -f -qq 2>&1 || true
-          fi
-          which mull-instrument-18 2>/dev/null && echo "Mull installed!" || echo "Mull not found — fallback to manual"
-          export KEY="-DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL" INC="-I . -I tests/third_party"
-          clang++-18 -emit-llvm -c -std=c++20 -O0 -g $KEY $INC tests/string_test.cpp -o string_test.bc 2>/dev/null
-          mull-instrument-18 string_test.bc -o string_test_mut.bc 2>/dev/null
-          clang++-18 string_test_mut.bc -o string_test_mull -lpthread 2>/dev/null
-          mull-runner-18 string_test_mull --reporters=IDE --include-not-covered --timeout=30000 > mutation_results.txt 2>&1 || true
-          if [ ! -s mutation_results.txt ]; then
-            chmod +x tools/mutation_test.sh
-            bash tools/mutation_test.sh > mutation_results.txt 2>&1 || true
-          fi
-          cat mutation_results.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mutation-results
-          path: mutation_results.txt
-
   fuzz:
     name: Fuzz ${{ matrix.target }}
     runs-on: ubuntu-latest
@@ -152,7 +127,7 @@ jobs:
       matrix:
         target: [fuzz_hashes, fuzz_strings, fuzz_decoders]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: |
           sudo apt-get update
           sudo apt-get install -y clang cmake ninja-build

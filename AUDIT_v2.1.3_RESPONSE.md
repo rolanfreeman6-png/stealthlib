@@ -1,7 +1,7 @@
 # AUDIT_v2.1.3_RESPONSE — StealthLib Phase 1 Remediation
 
 > Historical record only. It describes the v2.1.x revision cited below and
-> is superseded for current behavior by the v2.2.2 documentation and tests.
+> is superseded for current behavior by the v2.2.3 documentation and tests.
 > Do not treat its historical verification claims as current-release results.
 
 **Date:** 2026-06-26

@@ -13,21 +13,42 @@ void print_separator(const char* title) {
 void demonstrate_string_encryption() {
     print_separator("COMPILE-TIME STRING ENCRYPTION");
     auto sensitive_api_key = S("EXAMPLE_API_KEY_PLACEHOLDER_NOT_REAL");
-    std::cout << "[+] Encrypted API Key: " << sensitive_api_key << "\n";
+    {
+        auto lock = sensitive_api_key.unlock();
+        std::cout << "[+] API Key placeholder: " << lock.c_str() << "\n";
+    }
     std::cout << "[*] String length: " << sensitive_api_key.size() << "\n";
     auto connection_string = S("Server=example.db.local;Password=EXAMPLE_PLACEHOLDER");
-    std::cout << "[+] Connection String: " << connection_string << "\n";
+    {
+        auto lock = connection_string.unlock();
+        std::cout << "[+] Connection String placeholder: " << lock.c_str() << "\n";
+    }
     auto jwt_secret = S("EXAMPLE_JWT_SECRET_PLACEHOLDER_NOT_REAL");
-    std::cout << "[+] JWT Secret: " << jwt_secret << "\n";
+    {
+        auto lock = jwt_secret.unlock();
+        std::cout << "[+] JWT placeholder: " << lock.c_str() << "\n";
+    }
     auto license_key = S("LICENSE-KEY-A1B2-C3D4-E5F6-G7H8");
-    std::cout << "[+] License Key: " << license_key << "\n";
+    {
+        auto lock = license_key.unlock();
+        std::cout << "[+] License Key placeholder: " << lock.c_str() << "\n";
+    }
     auto admin_password = S("EXAMPLE_ADMIN_PASSWORD_PLACEHOLDER");
-    std::cout << "[+] Admin Password: " << admin_password << "\n";
+    {
+        auto lock = admin_password.unlock();
+        std::cout << "[+] Admin password placeholder: " << lock.c_str() << "\n";
+    }
     std::cout << "\n[*] Wide string encryption:\n";
     auto wide_title = SW(L"StealthLib Wide String Test");
     auto wide_msg = SW(L"Selected literals are transformed at compile time.");
-    std::wcout << L"[+] Wide Title: " << wide_title << L"\n";
-    (void)wide_msg;
+    {
+        auto title_lock = wide_title.unlock();
+        std::wcout << L"[+] Wide Title: " << title_lock.c_str() << L"\n";
+    }
+    {
+        auto msg_lock = wide_msg.unlock();
+        std::wcout << L"[+] Wide Message: " << msg_lock.c_str() << L"\n";
+    }
 }
 
 void demonstrate_peb_resolution() {
@@ -128,7 +149,9 @@ void demonstrate_stealth_api() {
         std::cout << "[+] stealth_api resolved MessageBoxW\n";
         auto title = SW(L"StealthLib Demo");
         auto msg = SW(L"STEALTH_API resolved selected functions dynamically.");
-        MessageBoxW_fn.get()(nullptr, msg, title, MB_OK | MB_ICONINFORMATION);
+        auto title_lock = title.unlock();
+        auto msg_lock = msg.unlock();
+        MessageBoxW_fn.get()(nullptr, msg_lock.c_str(), title_lock.c_str(), MB_OK | MB_ICONINFORMATION);
     }
     auto GetTickCount64_fn = stealth::stealth_api<ULONGLONG()>("kernel32.dll", "GetTickCount64");
     if (GetTickCount64_fn.is_valid()) {

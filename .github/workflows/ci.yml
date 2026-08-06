@@ -47,6 +47,28 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
 
+  linux-sse2:
+    name: Linux SSE2 parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install
+        run: sudo apt-get update && sudo apt-get install -y g++-13 cmake ninja-build
+      - name: Configure SSE2 CMake
+        run: |
+          cmake -S . -B build-sse2 -G Ninja \
+            -DCMAKE_CXX_COMPILER=g++-13 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSTEALTHLIB_SSE2_DECRYPT=ON \
+            -DSTEALTH_BUILD_EXAMPLES=OFF \
+            -DSTEALTH_BUILD_TESTS=ON \
+            -DSTEALTH_BUILD_BENCHMARK=OFF \
+            -DSTEALTH_BUILD_FIXTURES=OFF
+      - name: Build SSE2 parity target
+        run: cmake --build build-sse2 --target test_sse2_parity --parallel
+      - name: Run SSE2 parity test
+        run: ctest --test-dir build-sse2 -R test_sse2_parity --output-on-failure
+
   macos-clang:
     name: macOS Clang
     runs-on: macos-14

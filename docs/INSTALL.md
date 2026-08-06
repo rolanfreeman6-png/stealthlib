@@ -1,4 +1,4 @@
-# Installation Guide - v2.2.2
+# Installation Guide - v2.2.3
 
 ## Requirements
 
@@ -48,11 +48,16 @@ with that root on the include path:
 
 ```sh
 cp -R stealthlib your_project/third_party/include/
-g++ -std=c++20 -Iyour_project/third_party/include your.cpp
+g++ -std=c++20 -Iyour_project/third_party/include \
+  -DSTEALTH_BUILD_KEY=0x0123456789ABCDEFULL your.cpp
 ```
 
 Copying only `stealthlib/stealth.hpp` cannot work because the umbrella header
 includes sibling implementation headers.
+
+Manual-copy builds must define a non-zero `STEALTH_BUILD_KEY`. The CMake
+package and FetchContent integrations generate and propagate that definition;
+manual compiler invocations do not.
 
 ## Build options
 
@@ -73,6 +78,17 @@ includes sibling implementation headers.
 cmake -S . -B build -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
+```
+
+On x86/x64 targets, verify the SSE2 literal path with a separate configured
+build because the default build intentionally uses the scalar path:
+
+```sh
+cmake -S . -B build-sse2 -DSTEALTHLIB_SSE2_DECRYPT=ON \
+  -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_TESTS=ON \
+  -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF
+cmake --build build-sse2 --target test_sse2_parity --parallel
+ctest --test-dir build-sse2 -R test_sse2_parity --output-on-failure
 ```
 
 The CTest suite includes an isolated install-and-consume check and an isolated

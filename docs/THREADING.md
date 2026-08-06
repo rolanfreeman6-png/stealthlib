@@ -4,7 +4,7 @@
 (produced by the `S("...")` / `SW(L"...")` macros) and the
 `detail::encrypted_string_impl` / `encrypted_wstring_impl` they wrap.
 
-**Version:** v2.2.2. This document defines the supported thread-confinement
+**Version:** v2.2.3. This document defines the supported thread-confinement
 contract for encrypted literal instances.
 
 ---

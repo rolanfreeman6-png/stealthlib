@@ -11,7 +11,7 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-orange)](https://en.cppreference.com/w/cpp/20)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**StealthLib v2.2.2** — practical obfuscation + Windows inspection helpers with explicit limits and regression tests.
+**StealthLib v2.2.3** — practical obfuscation + Windows inspection helpers with explicit limits and regression tests.
 
 </div>
 
@@ -40,6 +40,16 @@ cd stealthlib
 cmake -S . -B build -DSTEALTH_BUILD_EXAMPLES=ON -DSTEALTH_BUILD_TESTS=ON
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
+```
+
+Optional x86/x64 SSE2 parity check:
+
+```bash
+cmake -S . -B build-sse2 -DSTEALTHLIB_SSE2_DECRYPT=ON \
+  -DSTEALTH_BUILD_EXAMPLES=OFF -DSTEALTH_BUILD_TESTS=ON \
+  -DSTEALTH_BUILD_BENCHMARK=OFF -DSTEALTH_BUILD_FIXTURES=OFF
+cmake --build build-sse2 --target test_sse2_parity --parallel
+ctest --test-dir build-sse2 -R test_sse2_parity --output-on-failure
 ```
 
 Minimal usage:
@@ -97,7 +107,7 @@ include(FetchContent)
 FetchContent_Declare(
     stealthlib
     GIT_REPOSITORY https://github.com/rolanfreeman6-png/stealthlib.git
-    GIT_TAG v2.2.2
+    GIT_TAG v2.2.3
 )
 FetchContent_MakeAvailable(stealthlib)
 target_link_libraries(your_target PRIVATE stealthlib)
@@ -106,6 +116,12 @@ target_link_libraries(your_target PRIVATE stealthlib)
 ### Manual copy
 
 Copy the **entire** `stealthlib/` directory into your include path. Copying only `stealth.hpp` is not enough because the umbrella header includes implementation headers from subdirectories.
+
+Manual-copy builds must define a non-zero `STEALTH_BUILD_KEY` because the CMake-generated key is unavailable outside CMake integration:
+
+```bash
+c++ -std=c++20 -I/path/to/include -DSTEALTH_BUILD_KEY=0x0123456789ABCDEFULL your.cpp
+```
 
 ---
 
@@ -213,7 +229,7 @@ Use `status`, not only `hooked == false`.
 
 ## 🧪 Verification
 
-Current local Windows verification for v2.2.2:
+Current local Windows verification for v2.2.3:
 
 | Check | Result |
 | --- | --- |
@@ -249,7 +265,7 @@ GitHub workflows:
 | `STEALTH_BUILD_FIXTURES` | `ON` | Generate PE fixtures; requires Python 3. |
 | `STEALTH_SANITIZERS` | `OFF` | Enable ASan + UBSan on Linux. |
 | `STEALTH_CLANG_TIDY` | `OFF` | Run clang-tidy when configured. |
-| `STEALTHLIB_SSE2_DECRYPT` | `OFF` | Enable SSE2 decrypt path for long literals on x86/x64. |
+| `STEALTHLIB_SSE2_DECRYPT` | `OFF` | Enable SSE2 decrypt path for long literals on x86/x64; CI runs an explicit parity configuration. |
 | `STEALTH_BUILD_KEY` | generated | Per-build obfuscation key. |
 
 ---
@@ -322,9 +338,9 @@ benchmark/
 
 | Version | Release |
 | --- | --- |
-| `2.2.2` | https://github.com/rolanfreeman6-png/stealthlib/releases/tag/v2.2.2 |
+| `2.2.3` | https://github.com/rolanfreeman6-png/stealthlib/releases/tag/v2.2.3 |
 
-Release asset `stealthlib-v2.2.2.zip` is a clean library package: `stealthlib/`, `cmake/`, `CMakeLists.txt`, `README.md`, and `LICENSE` only.
+Release asset `stealthlib-v2.2.3.zip` is a clean library package: `stealthlib/`, `cmake/`, `CMakeLists.txt`, `README.md`, and `LICENSE` only.
 
 GitHub's automatically generated `Source code` archives remain full repository snapshots by design; use the custom `stealthlib-v*.zip` asset for a minimal library-only package.
 
@@ -338,7 +354,7 @@ MIT — see [`LICENSE`](LICENSE).
 
 <div align="center">
 
-**StealthLib v2.2.2**<br>
+**StealthLib v2.2.3**<br>
 Built for practical hardening, explicit contracts, and reproducible tests.
 
 [Report bug](https://github.com/rolanfreeman6-png/stealthlib/issues) · [Releases](https://github.com/rolanfreeman6-png/stealthlib/releases) · [Security](docs/SECURITY.md)

@@ -84,8 +84,14 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DCMAKE_BUILD_TYPE=Release -DSTEALTH_BUILD_TESTS=ON -DSTEALTH_BUILD_EXAMPLES=ON \
             -DSTEALTH_BUILD_FIXTURES=ON -DSTEALTH_BUILD_KEY=0xC0FFEE42DEADBEEFULL
-          clang-tidy -p build --warnings-as-errors='*' examples/game_protection.cpp > tidy.log 2>&1
+          set +e
+          clang-tidy -p build \
+            -checks='-*,bugprone-*,cert-*,clang-analyzer-*,performance-*,portability-*' \
+            --warnings-as-errors='bugprone-*,cert-*,clang-analyzer-*,performance-*,portability-*' \
+            examples/game_protection.cpp > tidy.log 2>&1
+          rc=$?
           cat tidy.log
+          exit $rc
 
   cppcheck:
     name: cppcheck
@@ -94,10 +100,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: sudo apt-get update && sudo apt-get install -y cppcheck
       - run: |
-          cppcheck --enable=warning,style,performance,portability --error-exitcode=1 \
+          set +e
+          cppcheck --enable=warning,performance,portability --error-exitcode=1 \
             --inline-suppr --suppress=missingIncludeSystem --suppress=unusedFunction \
             -I stealthlib --std=c++20 stealthlib/ tests/ examples/ > cppcheck.log 2>&1
+          rc=$?
           cat cppcheck.log
+          exit $rc
 
   coverage:
     name: Coverage

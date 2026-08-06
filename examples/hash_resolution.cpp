@@ -1,4 +1,4 @@
-// StealthLib v2.2.2 example: HASH-BASED API RESOLUTION
+// StealthLib v2.2.3 example: HASH-BASED API RESOLUTION
 // ---------------------------------------------------------
 // What you SEE in the source: hashes of API/module names.
 // This demo prints diagnostic names, so it is not a no-strings sample.
